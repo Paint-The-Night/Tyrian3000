@@ -64,6 +64,55 @@ make debug TYRIAN_DIR=data/tyrian2000
 ./opentyrian2000
 ```
 
+## AI Remote Control
+
+Tyrian 3000 supports an in-process remote control socket for AI-driven testing.
+
+Start the game with:
+
+```bash
+./opentyrian2000 --remote-control --remote-socket=/tmp/tyrian3000-remote.sock
+```
+
+Included helper CLI:
+
+```bash
+./tools/gamectl.py launch
+./tools/gamectl.py send-keys down down enter
+./tools/gamectl.py screenshot /tmp/tyrian.bmp
+./tools/gamectl.py game-state
+./tools/gamectl.py stop
+```
+
+`gamectl` talks JSON over a Unix domain socket and supports:
+- launch/stop lifecycle
+- key and text injection
+- frame waits
+- debug-console command execution
+- palette-correct RGB screenshots
+
+### MCP wrapper (Claude/Codex tooling)
+
+This repo also includes a stdio MCP wrapper:
+
+```bash
+./tools/game_mcp_server.py
+```
+
+It exposes tools:
+- `game_launch`
+- `game_stop`
+- `game_ping`
+- `game_state`
+- `game_wait`
+- `game_send_key`
+- `game_send_keys`
+- `game_send_text`
+- `game_console`
+- `game_screenshot`
+
+Local Claude settings are pre-wired in `/Users/garyperrigo/Code/Tyrian3000/.claude/settings.local.json`.
+
 ## Controls
 
 | Key | Action |
@@ -73,6 +122,12 @@ make debug TYRIAN_DIR=data/tyrian2000
 | Enter | Toggle rear weapon mode |
 | Ctrl / Alt | Fire left / right sidekick |
 | Alt+Enter | Toggle fullscreen |
+
+## Docs
+
+Contributor and AI-agent notes live in:
+
+- [docs/README.md](docs/README.md)
 
 ## Network Multiplayer
 

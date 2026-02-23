@@ -47,6 +47,7 @@
 #include "video.h"
 #include "video_scale.h"
 #include "xmas.h"
+#include "remote_control.h"
 
 #include "SDL.h"
 
@@ -171,6 +172,8 @@ void setupMenu(void)
 	};
 
 	char buffer[100];
+
+	remote_control_set_ui_context("setup_menu");
 
 	if (shopSpriteSheet.data == NULL)
 		JE_loadCompShapes(&shopSpriteSheet, '1');  // need mouse pointer sprites
@@ -612,6 +615,7 @@ void setupMenu(void)
 
 			if (currentMenu == MENU_NONE)
 			{
+				remote_control_set_ui_context("main_menu");
 				fade_black(10);
 
 				return;
@@ -788,6 +792,14 @@ int main(int argc, char *argv[])
 	init_video();
 	init_keyboard();
 	init_joysticks();
+
+	if (remote_control_is_enabled())
+	{
+		if (!remote_control_init())
+			return EXIT_FAILURE;
+		atexit(remote_control_shutdown);
+	}
+	remote_control_set_ui_context("boot");
 	printf("assuming mouse detected\n"); // SDL can't tell us if there isn't one
 
 	if (xmas && (!dir_file_exists(data_dir(), "tyrianc.shp") || !dir_file_exists(data_dir(), "voicesc.snd")))

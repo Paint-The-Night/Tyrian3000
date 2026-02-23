@@ -18,9 +18,11 @@
  */
 #include "video.h"
 
+#include "debug_console.h"
 #include "keyboard.h"
 #include "opentyr.h"
 #include "palette.h"
+#include "remote_control.h"
 #include "video_scale.h"
 
 #include <assert.h>
@@ -311,9 +313,80 @@ void JE_clr256(SDL_Surface *screen)
 	SDL_FillRect(screen, NULL, 0);
 }
 
-void JE_showVGA(void) 
-{ 
-	scale_and_flip(VGAScreen); 
+bool video_save_surface_rgb(SDL_Surface *surface, const char *path)
+{
+	if (surface == NULL || path == NULL || path[0] == '\0')
+		return false;
+
+	SDL_Surface *rgb = SDL_CreateRGBSurfaceWithFormat(0, surface->w, surface->h, 32, SDL_PIXELFORMAT_ARGB8888);
+	if (rgb == NULL)
+		return false;
+
+	Uint32 map_cache[256];
+	for (uint i = 0; i < COUNTOF(map_cache); ++i)
+		map_cache[i] = SDL_MapRGB(rgb->format, colors[i].r, colors[i].g, colors[i].b);
+
+	if (SDL_MUSTLOCK(surface))
+		SDL_LockSurface(surface);
+	if (SDL_MUSTLOCK(rgb))
+		SDL_LockSurface(rgb);
+
+	for (int y = 0; y < surface->h; ++y)
+	{
+		const Uint8 *src = (const Uint8 *)surface->pixels + y * surface->pitch;
+		Uint32 *dst = (Uint32 *)((Uint8 *)rgb->pixels + y * rgb->pitch);
+
+		for (int x = 0; x < surface->w; ++x)
+			dst[x] = map_cache[src[x]];
+	}
+
+	if (SDL_MUSTLOCK(rgb))
+		SDL_UnlockSurface(rgb);
+	if (SDL_MUSTLOCK(surface))
+		SDL_UnlockSurface(surface);
+
+	const int result = SDL_SaveBMP(rgb, path);
+	SDL_FreeSurface(rgb);
+	return result == 0;
+}
+
+void JE_showVGA(void)
+{
+	if (debug_console_is_active())
+	{
+		/* Draw console on a scratch copy so VGAScreen is never corrupted.
+		   The game reads back from VGAScreen between frames, so modifying
+		   it directly causes compounding darkening and text ghosting. */
+		static SDL_Surface *console_scratch = NULL;
+		if (console_scratch == NULL)
+			console_scratch = SDL_CreateRGBSurface(0, vga_width, vga_height, 8, 0, 0, 0, 0);
+
+		if (console_scratch->pitch == VGAScreen->pitch)
+		{
+			memcpy(console_scratch->pixels, VGAScreen->pixels, (size_t)VGAScreen->pitch * VGAScreen->h);
+		}
+		else
+		{
+			for (int y = 0; y < VGAScreen->h; ++y)
+			{
+				memcpy((Uint8 *)console_scratch->pixels + y * console_scratch->pitch,
+				       (const Uint8 *)VGAScreen->pixels + y * VGAScreen->pitch,
+				       (size_t)VGAScreen->w);
+			}
+		}
+		debug_console_draw(console_scratch);
+
+		if (debug_console_wants_screenshot())
+			video_save_surface_rgb(console_scratch, "/tmp/tyrian_console.bmp");
+
+		scale_and_flip(console_scratch);
+		remote_control_on_frame(console_scratch);
+	}
+	else
+	{
+		scale_and_flip(VGAScreen);
+		remote_control_on_frame(VGAScreen);
+	}
 }
 
 static void calc_dst_render_rect(SDL_Surface *const src_surface, SDL_Rect *const dst_rect)

@@ -19,10 +19,12 @@
 #include "keyboard.h"
 
 #include "config.h"
+#include "debug_console.h"
 #include "joystick.h"
 #include "mouse.h"
 #include "network.h"
 #include "opentyr.h"
+#include "remote_control.h"
 #include "video.h"
 #include "video_scale.h"
 
@@ -140,6 +142,8 @@ void service_SDL_events(JE_boolean clear_new)
 {
 	SDL_Event ev;
 
+	remote_control_pump();
+
 	if (clear_new)
 	{
 		newkey = false;
@@ -180,6 +184,20 @@ void service_SDL_events(JE_boolean clear_new)
 					break;
 				}
 
+				/* <`> toggle debug console */
+				if (ev.key.keysym.scancode == SDL_SCANCODE_GRAVE)
+				{
+					debug_console_toggle();
+					break;
+				}
+
+				/* When console is open, route input there instead of game. */
+				if (debug_console_is_active())
+				{
+					debug_console_handle_keydown(ev.key.keysym.scancode, ev.key.keysym.mod);
+					break;
+				}
+
 				keysactive[ev.key.keysym.scancode] = 1;
 
 				newkey = true;
@@ -191,6 +209,8 @@ void service_SDL_events(JE_boolean clear_new)
 				return;
 
 			case SDL_KEYUP:
+				if (debug_console_is_active())
+					break;  /* consume key releases while console is open */
 				keysactive[ev.key.keysym.scancode] = 0;
 				keydown = false;
 				return;
@@ -265,6 +285,11 @@ void service_SDL_events(JE_boolean clear_new)
 				break;
 
 			case SDL_TEXTINPUT:
+				if (debug_console_is_active())
+				{
+					debug_console_handle_textinput(ev.text.text);
+					break;
+				}
 				SDL_strlcpy(last_text, ev.text.text, COUNTOF(last_text));
 				new_text = true;
 				break;

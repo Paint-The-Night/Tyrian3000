@@ -20,6 +20,7 @@
 
 #include "animlib.h"
 #include "backgrnd.h"
+#include "debug_console.h"
 #include "episodes.h"
 #include "file.h"
 #include "font.h"
@@ -42,6 +43,7 @@
 #include "pcxload.h"
 #include "pcxmast.h"
 #include "picload.h"
+#include "remote_control.h"
 #include "shots.h"
 #include "sprite.h"
 #include "vga256d.h"
@@ -620,6 +622,8 @@ draw_enemy_end:
 
 void JE_main(void)
 {
+	remote_control_set_ui_context("in_game");
+
 	char buffer[256];
 
 	int lastEnemyOnScreen;
@@ -3282,6 +3286,8 @@ void networkStartScreen(void)
 
 bool titleScreen(void)
 {
+	remote_control_set_ui_context("title_screen");
+
 	enum MenuItemIndex
 	{
 		MENU_ITEM_NEW_GAME = 0,
@@ -3404,7 +3410,13 @@ bool titleScreen(void)
 			service_SDL_events(false);
 
 			mouseMoved = mouse_x != oldMouseX || mouse_y != oldMouseY;
-		} while (!(newkey || new_text || newmouse || mouseMoved));
+		} while (!debug_console_is_active() && !(newkey || new_text || newmouse || mouseMoved));
+
+		/* Keep title rendering responsive while the debug console is open.
+		   The title menu normally idles until a gameplay/menu input event,
+		   but console keystrokes are consumed before they set newkey/new_text. */
+		if (debug_console_is_active())
+			continue;
 
 		// Handle interaction.
 

@@ -58,6 +58,7 @@ void deinit_video(void);
 
 void JE_clr256(SDL_Surface *);
 void JE_showVGA(void);
+bool video_save_surface_rgb(SDL_Surface *surface, const char *path);
 
 void mapScreenPointToWindow(Sint32 *inout_x, Sint32 *inout_y);
 void mapWindowPointToScreen(Sint32 *inout_x, Sint32 *inout_y);

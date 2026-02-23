@@ -19,11 +19,13 @@
 #include "params.h"
 
 #include "arg_parse.h"
+#include "debug_console.h"
 #include "file.h"
 #include "joystick.h"
 #include "loudness.h"
 #include "network.h"
 #include "opentyr.h"
+#include "remote_control.h"
 #include "varz.h"
 #include "xmas.h"
 
@@ -63,7 +65,11 @@ void JE_paramCheck(int argc, char *argv[])
 		{ 'k', 'k', "death",             false },
 		{ 'r', 'r', "record",            false },
 		{ 'l', 'l', "loot",              false },
-		
+
+		{ 258, 0,   "console-exec",     true },
+		{ 259, 0,   "remote-control",   false },
+		{ 260, 0,   "remote-socket",    true },
+
 		{ 0, 0, NULL, false}
 	};
 	
@@ -98,7 +104,10 @@ void JE_paramCheck(int argc, char *argv[])
 			       "  --net-player-number=NUMBER   Sets local player number in a networked game\n"
 			       "                               (1 or 2)\n"
 			       "  -p, --net-port=PORT          Local port to bind (default is 1333)\n"
-			       "  -d, --net-delay=FRAMES       Set lag-compensation delay (default is 1)\n", argv[0]);
+			       "  -d, --net-delay=FRAMES       Set lag-compensation delay (default is 1)\n"
+			       "  --console-exec=COMMAND       Execute a debug console command on startup\n"
+			       "  --remote-control             Enable remote control socket server\n"
+			       "  --remote-socket=PATH         Override remote control socket path\n", argv[0]);
 			exit(0);
 			break;
 			
@@ -214,7 +223,19 @@ void JE_paramCheck(int argc, char *argv[])
 			// Gives you mucho bucks
 			richMode = true;
 			break;
-			
+
+		case 258: // --console-exec
+			debug_console_set_startup_command(option.arg);
+			break;
+
+		case 259: // --remote-control
+			remote_control_enable(NULL);
+			break;
+
+		case 260: // --remote-socket
+			remote_control_enable(option.arg);
+			break;
+
 		default:
 			assert(false);
 			break;
