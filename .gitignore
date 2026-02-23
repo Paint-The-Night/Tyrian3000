@@ -1,4 +1,11 @@
 /data/
+tyrian2000.zip
+
+# macOS
+.DS_Store
+
+# Claude Code
+.claude/
 
 opentyrian.cfg
 tyrian.cfg

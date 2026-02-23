@@ -43,15 +43,15 @@ uint scaler;
 
 const struct Scalers scalers[] =
 {
-	{ 1 * vga_width, 1 * vga_height, nn_16,      nn_32,      "None" },
-	{ 2 * vga_width, 2 * vga_height, nn_16,      nn_32,      "2x" },
-	{ 2 * vga_width, 2 * vga_height, scale2x_16, scale2x_32, "Scale2x" },
-	{ 2 * vga_width, 2 * vga_height, NULL,       hq2x_32,    "hq2x" },
-	{ 3 * vga_width, 3 * vga_height, nn_16,      nn_32,      "3x" },
-	{ 3 * vga_width, 3 * vga_height, scale3x_16, scale3x_32, "Scale3x" },
-	{ 3 * vga_width, 3 * vga_height, NULL,       hq3x_32,    "hq3x" },
-	{ 4 * vga_width, 4 * vga_height, nn_16,      nn_32,      "4x" },
-	{ 4 * vga_width, 4 * vga_height, NULL,       hq4x_32,    "hq4x" },
+	{ 1 * vga_width, 1 * vga_height, nn_16,      nn_32,      "None",    "No scaling. Native 320x200." },
+	{ 2 * vga_width, 2 * vga_height, nn_16,      nn_32,      "2x",      "Pixel doubling. Sharp and blocky." },
+	{ 2 * vga_width, 2 * vga_height, scale2x_16, scale2x_32, "Scale2x", "Smart 2x. Smooths edges, keeps detail." },
+	{ 2 * vga_width, 2 * vga_height, NULL,       hq2x_32,    "hq2x",    "High-quality 2x. Best edge smoothing." },
+	{ 3 * vga_width, 3 * vga_height, nn_16,      nn_32,      "3x",      "Pixel tripling. Sharp and blocky." },
+	{ 3 * vga_width, 3 * vga_height, scale3x_16, scale3x_32, "Scale3x", "Smart 3x. Smooths edges, keeps detail." },
+	{ 3 * vga_width, 3 * vga_height, NULL,       hq3x_32,    "hq3x",    "High-quality 3x. Best edge smoothing." },
+	{ 4 * vga_width, 4 * vga_height, nn_16,      nn_32,      "4x",      "Pixel quadrupling. Sharp and blocky." },
+	{ 4 * vga_width, 4 * vga_height, NULL,       hq4x_32,    "hq4x",    "High-quality 4x. Best edge smoothing." },
 };
 const uint scalers_count = COUNTOF(scalers);
 

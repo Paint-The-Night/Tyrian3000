@@ -277,7 +277,12 @@ void setupMenu(void)
 		}
 
 		// Draw status text.
-		JE_textShade(VGAScreen, xMenuItemName, 190, menuItems[*selectedMenuItemIndex].description, 15, 4, PART_SHADE);
+		{
+			const char *statusText = menuItems[*selectedMenuItemIndex].description;
+			if (currentPicker == MENU_ITEM_SCALER)
+				statusText = scalers[pickerSelectedIndex].description;
+			JE_textShade(VGAScreen, xMenuItemName, 190, statusText, 15, 4, PART_SHADE);
+		}
 
 		// Draw picker box and items.
 

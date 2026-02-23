@@ -30,6 +30,7 @@ struct Scalers
 	int width, height;
 	ScalerFunction scaler16, scaler32;
 	const char *name;
+	const char *description;
 };
 
 extern uint scaler;
