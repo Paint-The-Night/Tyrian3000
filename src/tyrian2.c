@@ -1091,6 +1091,17 @@ start_level_first:
 
 level_loop:
 
+	/* Pause gameplay simulation while the debug console is open.
+	   Keep pumping events and presenting the current frame so the
+	   console stays interactive, but do not advance game state. */
+	if (debug_console_is_active())
+	{
+		service_SDL_events(false);
+		JE_showVGA();
+		SDL_Delay(16);
+		goto level_loop;
+	}
+
 	//tempScreenSeg = game_screen; /* side-effect of game_screen */
 
 	if (isNetworkGame)

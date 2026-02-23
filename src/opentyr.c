@@ -79,11 +79,103 @@ static size_t getScalerPickerItemsCount(void)
 	return (size_t)scalers_count;
 }
 
+typedef enum
+{
+	SCALER_GROUP_NONE = 0,
+	SCALER_GROUP_NEAREST,
+	SCALER_GROUP_SCALE,
+	SCALER_GROUP_HQ,
+	SCALER_GROUP_COUNT
+} ScalerGroup;
+
+static ScalerGroup getScalerGroup(size_t scalerIndex)
+{
+	const char *name = scalers[scalerIndex].name;
+
+	if (strcmp(name, "None") == 0)
+		return SCALER_GROUP_NONE;
+	if (strncmp(name, "hq", 2) == 0)
+		return SCALER_GROUP_HQ;
+	if (strncmp(name, "Scale", 5) == 0)
+		return SCALER_GROUP_SCALE;
+	return SCALER_GROUP_NEAREST;
+}
+
+static size_t scalerPickerToScalerIndex(size_t pickerIndex)
+{
+	size_t groupedIndex = 0;
+
+	for (int group = 0; group < SCALER_GROUP_COUNT; ++group)
+	{
+		for (size_t scalerIndex = 0; scalerIndex < scalers_count; ++scalerIndex)
+		{
+			if ((int)getScalerGroup(scalerIndex) != group)
+				continue;
+
+			if (groupedIndex == pickerIndex)
+				return scalerIndex;
+			++groupedIndex;
+		}
+	}
+
+	return 0;
+}
+
+static size_t scalerIndexToPickerIndex(size_t scalerIndex)
+{
+	size_t groupedIndex = 0;
+
+	for (int group = 0; group < SCALER_GROUP_COUNT; ++group)
+	{
+		for (size_t i = 0; i < scalers_count; ++i)
+		{
+			if ((int)getScalerGroup(i) != group)
+				continue;
+
+			if (i == scalerIndex)
+				return groupedIndex;
+			++groupedIndex;
+		}
+	}
+
+	return 0;
+}
+
+static bool scalerPickerHasGroupBreakBefore(size_t pickerIndex)
+{
+	if (pickerIndex == 0 || pickerIndex >= scalers_count)
+		return false;
+
+	const ScalerGroup prevGroup = getScalerGroup(scalerPickerToScalerIndex(pickerIndex - 1));
+	const ScalerGroup currGroup = getScalerGroup(scalerPickerToScalerIndex(pickerIndex));
+	return prevGroup != currGroup;
+}
+
+static int scalerPickerGroupBreaksBefore(size_t pickerIndex)
+{
+	int breaks = 0;
+
+	for (size_t i = 1; i <= pickerIndex && i < scalers_count; ++i)
+	{
+		if (scalerPickerHasGroupBreakBefore(i))
+			++breaks;
+	}
+
+	return breaks;
+}
+
+static int scalerPickerExtraHeight(int groupGap)
+{
+	if (scalers_count == 0)
+		return 0;
+	return scalerPickerGroupBreaksBefore(scalers_count - 1) * groupGap;
+}
+
 static const char *getScalerPickerItem(size_t i, char *buffer, size_t bufferSize)
 {
-	(void)buffer, (void)bufferSize;
-
-	return scalers[i].name;
+	(void)buffer;
+	(void)bufferSize;
+	return scalers[scalerPickerToScalerIndex(i)].name;
 }
 
 static size_t getScalingModePickerItemsCount(void)
@@ -96,6 +188,11 @@ static const char *getScalingModePickerItem(size_t i, char *buffer, size_t buffe
 	(void)buffer, (void)bufferSize;
 
 	return scaling_mode_names[i];
+}
+
+static bool menu_option_equals(const char *selectedOption, const char *expected)
+{
+	return SDL_strcasecmp(selectedOption, expected) == 0;
 }
 
 void setupMenu(void)
@@ -172,6 +269,7 @@ void setupMenu(void)
 	};
 
 	char buffer[100];
+	char statusBuffer[160];
 
 	remote_control_set_ui_context("setup_menu");
 
@@ -185,6 +283,68 @@ void setupMenu(void)
 	MenuId currentMenu = MENU_SETUP;
 	MenuItemId currentPicker = MENU_ITEM_NONE;
 	size_t pickerSelectedIndex = 0;
+
+	if (startInGraphicsMenu)
+	{
+		currentMenu = MENU_GRAPHICS;
+		menuParents[MENU_GRAPHICS] = MENU_SETUP;
+	}
+
+	if (startMenuOption[0] != '\0')
+	{
+		const MenuItem *startupItems = menus[currentMenu].items;
+		for (size_t i = 0; startupItems[i].id != (MenuItemId)-1; ++i)
+		{
+			bool match = false;
+			switch (startupItems[i].id)
+			{
+			case MENU_ITEM_DONE:
+				match = menu_option_equals(startMenuOption, "done") ||
+				        menu_option_equals(startMenuOption, "return");
+				break;
+			case MENU_ITEM_GRAPHICS:
+				match = menu_option_equals(startMenuOption, "graphics");
+				break;
+			case MENU_ITEM_SOUND:
+				match = menu_option_equals(startMenuOption, "sound");
+				break;
+			case MENU_ITEM_JUKEBOX:
+				match = menu_option_equals(startMenuOption, "jukebox");
+				break;
+			case MENU_ITEM_DISPLAY:
+				match = menu_option_equals(startMenuOption, "display");
+				break;
+			case MENU_ITEM_SCALER:
+				match = menu_option_equals(startMenuOption, "scaler");
+				break;
+			case MENU_ITEM_SCALING_MODE:
+				match = menu_option_equals(startMenuOption, "scaling-mode") ||
+				        menu_option_equals(startMenuOption, "scaling_mode") ||
+				        menu_option_equals(startMenuOption, "scaling mode");
+				break;
+			case MENU_ITEM_MUSIC_VOLUME:
+				match = menu_option_equals(startMenuOption, "music-volume") ||
+				        menu_option_equals(startMenuOption, "music_volume") ||
+				        menu_option_equals(startMenuOption, "music volume");
+				break;
+			case MENU_ITEM_SOUND_VOLUME:
+				match = menu_option_equals(startMenuOption, "sound-volume") ||
+				        menu_option_equals(startMenuOption, "sound_volume") ||
+				        menu_option_equals(startMenuOption, "sound volume");
+				break;
+			default:
+				break;
+			}
+
+			if (match)
+			{
+				selectedMenuItemIndexes[currentMenu] = i;
+				break;
+			}
+		}
+	}
+
+	bool autoActivateStartupSelection = startMenuEnter;
 
 	const int xCenter = 320 / 2;
 	const int yMenuHeader = 4;
@@ -215,12 +375,22 @@ void setupMenu(void)
 		draw_font_hv_shadow(VGAScreen, xCenter, yMenuHeader, menu->header, large_font, centered, 15, -3, false, 2);
 
 		int yPicker = 0;
-		const int dyPickerItem = 15;
+		int dyPickerItem = 15;
 		const int dyPickerItemPadding = 2;
-		const int hPickerItem = dyPickerItem - dyPickerItemPadding;
+		int hPickerItem;
+		const int scalerGroupGap = 4;
 
 		size_t *const selectedMenuItemIndex = &selectedMenuItemIndexes[currentMenu];
 		const MenuItem *const menuItems = menu->items;
+
+		if (currentPicker != MENU_ITEM_NONE)
+		{
+			const MenuItem *pickerMenuItem = &menuItems[*selectedMenuItemIndex];
+			if (pickerMenuItem->id == MENU_ITEM_SCALER && pickerMenuItem->getPickerItemsCount() > 10)
+				dyPickerItem = 11;
+		}
+
+		hPickerItem = dyPickerItem - dyPickerItemPadding;
 
 		// Draw menu items.
 
@@ -282,8 +452,22 @@ void setupMenu(void)
 		// Draw status text.
 		{
 			const char *statusText = menuItems[*selectedMenuItemIndex].description;
-			if (currentPicker == MENU_ITEM_SCALER)
-				statusText = scalers[pickerSelectedIndex].description;
+			if (menuItems[*selectedMenuItemIndex].id == MENU_ITEM_SCALER)
+			{
+				size_t selectedScaler = scaler;
+				if (currentPicker == MENU_ITEM_SCALER)
+					selectedScaler = scalerPickerToScalerIndex(pickerSelectedIndex);
+
+				snprintf(
+					statusBuffer,
+					sizeof(statusBuffer),
+					"%s  Output: %dx%d",
+					scalers[selectedScaler].description,
+					scalers[selectedScaler].width,
+					scalers[selectedScaler].height
+				);
+				statusText = statusBuffer;
+			}
 			JE_textShade(VGAScreen, xMenuItemName, 190, statusText, 15, 4, PART_SHADE);
 		}
 
@@ -295,16 +479,28 @@ void setupMenu(void)
 			const size_t pickerItemsCount = selectedMenuItem->getPickerItemsCount();
 
 			const int hPicker = dyPickerItem * pickerItemsCount - dyPickerItemPadding;
-			yPicker = MIN(yPicker, 200 - 10 - (hPicker + 5 + 2));
+			const int hPickerExtra = (selectedMenuItem->id == MENU_ITEM_SCALER)
+				? scalerPickerExtraHeight(scalerGroupGap)
+				: 0;
+			const int hPickerTotal = hPicker + hPickerExtra;
+			yPicker = MIN(yPicker, 200 - 10 - (hPickerTotal + 5 + 2));
 
-			JE_rectangle(VGAScreen, xMenuItemValue - 5, yPicker- 3, xMenuItemValue + wMenuItemValue + 5 - 1, yPicker + hPicker + 3 - 1, 248);
-			JE_rectangle(VGAScreen, xMenuItemValue - 4, yPicker- 4, xMenuItemValue + wMenuItemValue + 4 - 1, yPicker + hPicker + 4 - 1, 250);
-			JE_rectangle(VGAScreen, xMenuItemValue - 3, yPicker- 5, xMenuItemValue + wMenuItemValue + 3 - 1, yPicker + hPicker + 5 - 1, 248);
-			fill_rectangle_wh(VGAScreen, xMenuItemValue - 2, yPicker - 2, wMenuItemValue + 2 + 2, hPicker + 2 + 2, 224);
+			JE_rectangle(VGAScreen, xMenuItemValue - 5, yPicker- 3, xMenuItemValue + wMenuItemValue + 5 - 1, yPicker + hPickerTotal + 3 - 1, 248);
+			JE_rectangle(VGAScreen, xMenuItemValue - 4, yPicker- 4, xMenuItemValue + wMenuItemValue + 4 - 1, yPicker + hPickerTotal + 4 - 1, 250);
+			JE_rectangle(VGAScreen, xMenuItemValue - 3, yPicker- 5, xMenuItemValue + wMenuItemValue + 3 - 1, yPicker + hPickerTotal + 5 - 1, 248);
+			fill_rectangle_wh(VGAScreen, xMenuItemValue - 2, yPicker - 2, wMenuItemValue + 2 + 2, hPickerTotal + 2 + 2, 224);
 
 			for (size_t i = 0; i < pickerItemsCount; ++i)
 			{
-				const int y = yPicker + dyPickerItem * (int)i;
+				int y = yPicker + dyPickerItem * (int)i;
+				if (selectedMenuItem->id == MENU_ITEM_SCALER)
+				{
+					y += scalerPickerGroupBreaksBefore(i) * scalerGroupGap;
+					if (scalerPickerHasGroupBreakBefore(i))
+					{
+						fill_rectangle_xy(VGAScreen, xMenuItemValue - 1, y - 2, xMenuItemValue + wMenuItemValue - 1, y - 2, 241);
+					}
+				}
 
 				const bool selected = i == pickerSelectedIndex;
 
@@ -342,13 +538,18 @@ void setupMenu(void)
 			service_SDL_events(false);
 
 			mouseMoved = mouse_x != oldMouseX || mouse_y != oldMouseY;
-		} while (!(newkey || newmouse || mouseMoved || fullscreen_display != oldFullscreenDisplay));
+		} while (!(newkey || newmouse || mouseMoved || fullscreen_display != oldFullscreenDisplay || autoActivateStartupSelection));
 
 		if (currentPicker == MENU_ITEM_NONE)
 		{
 			// Handle menu item interaction.
 
 			bool action = false;
+			if (autoActivateStartupSelection)
+			{
+				action = true;
+				autoActivateStartupSelection = false;
+			}
 
 			if (mouseMoved || newmouse)
 			{
@@ -576,14 +777,14 @@ void setupMenu(void)
 					pickerSelectedIndex = (size_t)(fullscreen_display + 1);
 					break;
 				}
-				case MENU_ITEM_SCALER:
-				{
-					JE_playSampleNum(S_CLICK);
+					case MENU_ITEM_SCALER:
+					{
+						JE_playSampleNum(S_CLICK);
 
-					currentPicker = selectedMenuItemId;
-					pickerSelectedIndex = scaler;
-					break;
-				}
+						currentPicker = selectedMenuItemId;
+						pickerSelectedIndex = scalerIndexToPickerIndex(scaler);
+						break;
+					}
 				case MENU_ITEM_SCALING_MODE:
 				{
 					JE_playSampleNum(S_CLICK);
@@ -638,7 +839,9 @@ void setupMenu(void)
 				{
 					for (size_t i = 0; i < pickerItemsCount; ++i)
 					{
-						const int yPickerItem = yPicker + dyPickerItem * i;
+						int yPickerItem = yPicker + dyPickerItem * i;
+						if (selectedMenuItem->id == MENU_ITEM_SCALER)
+							yPickerItem += scalerPickerGroupBreaksBefore(i) * scalerGroupGap;
 
 						if (mouse_y >= yPickerItem && mouse_y < yPickerItem + hPickerItem)
 						{
@@ -726,15 +929,16 @@ void setupMenu(void)
 						reinit_fullscreen((int)pickerSelectedIndex - 1);
 					break;
 				}
-				case MENU_ITEM_SCALER:
-				{
-					if (pickerSelectedIndex != scaler)
+					case MENU_ITEM_SCALER:
 					{
-						const int oldScaler = scaler;
-						if (!init_scaler(pickerSelectedIndex) &&  // try new scaler
-							!init_scaler(oldScaler))              // revert on fail
+						const size_t selectedScaler = scalerPickerToScalerIndex(pickerSelectedIndex);
+						if (selectedScaler != scaler)
 						{
-							exit(EXIT_FAILURE);
+							const int oldScaler = scaler;
+							if (!init_scaler(selectedScaler) &&  // try new scaler
+								!init_scaler(oldScaler))              // revert on fail
+							{
+								exit(EXIT_FAILURE);
 						}
 					}
 					break;
@@ -859,7 +1063,7 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef NDEBUG
-	if (!isNetworkGame)
+	if (!isNetworkGame && !startInSetupMenu)
 		intro_logos();
 #endif
 
@@ -873,6 +1077,15 @@ int main(int argc, char *argv[])
 
 		gameLoaded = false;
 		jumpSection = false;
+
+		if (startInSetupMenu)
+		{
+			setupMenu();
+			startInSetupMenu = false;
+			startInGraphicsMenu = false;
+			startMenuEnter = false;
+			startMenuOption[0] = '\0';
+		}
 
 #ifdef WITH_NETWORK
 		if (isNetworkGame)

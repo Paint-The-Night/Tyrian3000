@@ -22,6 +22,9 @@
 #include "opentyr.h"
 
 extern JE_boolean richMode, constantPlay, constantDie;
+extern JE_boolean startInSetupMenu, startInGraphicsMenu;
+extern JE_boolean startMenuEnter;
+extern char startMenuOption[64];
 
 void JE_paramCheck(int argc, char *argv[]);
 

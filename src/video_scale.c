@@ -52,6 +52,10 @@ const struct Scalers scalers[] =
 	{ 3 * vga_width, 3 * vga_height, NULL,       hq3x_32,    "hq3x",    "High-quality 3x. Best edge smoothing." },
 	{ 4 * vga_width, 4 * vga_height, nn_16,      nn_32,      "4x",      "Pixel quadrupling. Sharp and blocky." },
 	{ 4 * vga_width, 4 * vga_height, NULL,       hq4x_32,    "hq4x",    "High-quality 4x. Best edge smoothing." },
+	{ 5 * vga_width, 5 * vga_height, nn_16,      nn_32,      "5x",      "Pixel 5x. Sharp and blocky." },
+	{ 6 * vga_width, 6 * vga_height, nn_16,      nn_32,      "6x",      "Pixel 6x. Sharp and blocky." },
+	{ 7 * vga_width, 7 * vga_height, nn_16,      nn_32,      "7x",      "Pixel 7x. Sharp and blocky." },
+	{ 8 * vga_width, 8 * vga_height, nn_16,      nn_32,      "8x",      "Pixel 8x. Sharp and blocky." },
 };
 const uint scalers_count = COUNTOF(scalers);
 

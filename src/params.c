@@ -36,6 +36,9 @@
 #include <string.h>
 
 JE_boolean richMode = false, constantPlay = false, constantDie = false;
+JE_boolean startInSetupMenu = false, startInGraphicsMenu = false;
+JE_boolean startMenuEnter = false;
+char startMenuOption[64] = "";
 
 /* YKS: Note: LOOT cheat had non letters removed. */
 const char pars[][9] = {
@@ -66,9 +69,13 @@ void JE_paramCheck(int argc, char *argv[])
 		{ 'r', 'r', "record",            false },
 		{ 'l', 'l', "loot",              false },
 
-		{ 258, 0,   "console-exec",     true },
-		{ 259, 0,   "remote-control",   false },
-		{ 260, 0,   "remote-socket",    true },
+			{ 258, 0,   "console-exec",     true },
+			{ 259, 0,   "remote-control",   false },
+			{ 260, 0,   "remote-socket",    true },
+			{ 261, 0,   "start-setup-menu", false },
+			{ 262, 0,   "start-graphics-menu", false },
+			{ 263, 0,   "start-menu-option", true },
+			{ 264, 0,   "start-menu-enter", false },
 
 		{ 0, 0, NULL, false}
 	};
@@ -104,10 +111,14 @@ void JE_paramCheck(int argc, char *argv[])
 			       "  --net-player-number=NUMBER   Sets local player number in a networked game\n"
 			       "                               (1 or 2)\n"
 			       "  -p, --net-port=PORT          Local port to bind (default is 1333)\n"
-			       "  -d, --net-delay=FRAMES       Set lag-compensation delay (default is 1)\n"
-			       "  --console-exec=COMMAND       Execute a debug console command on startup\n"
-			       "  --remote-control             Enable remote control socket server\n"
-			       "  --remote-socket=PATH         Override remote control socket path\n", argv[0]);
+				       "  -d, --net-delay=FRAMES       Set lag-compensation delay (default is 1)\n"
+				       "  --console-exec=COMMAND       Execute a debug console command on startup\n"
+				       "  --remote-control             Enable remote control socket server\n"
+				       "  --remote-socket=PATH         Override remote control socket path\n"
+				       "  --start-setup-menu           Start directly in Setup menu\n"
+				       "  --start-graphics-menu        Start directly in Setup > Graphics\n"
+				       "  --start-menu-option=NAME     Preselect menu item (e.g. scaler)\n"
+				       "  --start-menu-enter           Activate selected startup menu item\n", argv[0]);
 			exit(0);
 			break;
 			
@@ -232,9 +243,27 @@ void JE_paramCheck(int argc, char *argv[])
 			remote_control_enable(NULL);
 			break;
 
-		case 260: // --remote-socket
-			remote_control_enable(option.arg);
-			break;
+			case 260: // --remote-socket
+				remote_control_enable(option.arg);
+				break;
+
+			case 261: // --start-setup-menu
+				startInSetupMenu = true;
+				startInGraphicsMenu = false;
+				break;
+
+			case 262: // --start-graphics-menu
+				startInSetupMenu = true;
+				startInGraphicsMenu = true;
+				break;
+
+			case 263: // --start-menu-option
+				SDL_strlcpy(startMenuOption, option.arg, sizeof(startMenuOption));
+				break;
+
+			case 264: // --start-menu-enter
+				startMenuEnter = true;
+				break;
 
 		default:
 			assert(false);

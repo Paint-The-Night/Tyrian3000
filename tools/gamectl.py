@@ -110,6 +110,14 @@ def cmd_launch(args: argparse.Namespace) -> int:
         f"--remote-socket={socket_path}",
         f"--data={args.data}",
     ]
+    if args.start_menu == "setup":
+        cmd.append("--start-setup-menu")
+    elif args.start_menu == "graphics":
+        cmd.append("--start-graphics-menu")
+    if args.start_menu_option:
+        cmd.append(f"--start-menu-option={args.start_menu_option}")
+    if args.start_menu_enter:
+        cmd.append("--start-menu-enter")
     cmd.extend(args.extra_args)
 
     proc = subprocess.Popen(  # noqa: S603
@@ -250,6 +258,9 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--data", default="data/tyrian2000")
     launch.add_argument("--log", default=str(DEFAULT_LOG))
     launch.add_argument("--wait-start", type=float, default=60.0)
+    launch.add_argument("--start-menu", choices=["title", "setup", "graphics"], default="title")
+    launch.add_argument("--start-menu-option", default=None)
+    launch.add_argument("--start-menu-enter", action="store_true")
     launch.add_argument("--debug", action=argparse.BooleanOptionalAction, default=False)
     launch.add_argument("--build", action=argparse.BooleanOptionalAction, default=True)
     launch.add_argument("extra_args", nargs=argparse.REMAINDER, help="extra args passed to the game")

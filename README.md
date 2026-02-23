@@ -12,12 +12,12 @@ quality-of-life improvements and — eventually — brand new episodes and conte
 
 ## What's New in Tyrian 3000
 
-- **Enhanced UI** — Contextual descriptions for graphics scalers and settings,
-  so you actually know what you're picking
-- **Quality-of-life improvements** — Small tweaks that make the classic
-  experience smoother without losing the retro soul
-- **New content (planned)** — New episodes and additions beyond the original
-  Tyrian 2000 campaign
+- Added Debug Menu
+- Added resolution check command to Debug Menu
+- Added Remote Control (for AI development and automation tools)
+- Added launch flags to open directly into menus
+- Added scaler resolution display in Graphics menu
+- Added MCP wrapper + `gamectl` CLI for automation workflow
 
 ## Building from Source
 

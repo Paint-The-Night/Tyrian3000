@@ -26,6 +26,9 @@ TOOLS: list[dict[str, Any]] = [
                 "data": {"type": "string", "default": "data/tyrian2000"},
                 "binary": {"type": "string", "default": "./opentyrian2000"},
                 "wait_start": {"type": "number", "default": 60.0},
+                "start_menu": {"type": "string", "enum": ["title", "setup", "graphics"], "default": "title"},
+                "start_menu_option": {"type": "string"},
+                "start_menu_enter": {"type": "boolean", "default": False},
             },
         },
     },
@@ -183,6 +186,12 @@ def handle_tool_call(name: str, args: dict[str, Any]) -> str:
             argv.extend(["--binary", str(args["binary"])])
         if "wait_start" in args:
             argv.extend(["--wait-start", str(args["wait_start"])])
+        if "start_menu" in args:
+            argv.extend(["--start-menu", str(args["start_menu"])])
+        if "start_menu_option" in args:
+            argv.extend(["--start-menu-option", str(args["start_menu_option"])])
+        if bool(args.get("start_menu_enter", False)):
+            argv.append("--start-menu-enter")
         return run_gamectl(argv)
 
     if name == "game_stop":
