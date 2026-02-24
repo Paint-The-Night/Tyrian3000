@@ -12,12 +12,11 @@ quality-of-life improvements and — eventually — brand new episodes and conte
 
 ## What's New in Tyrian 3000
 
-- Added Debug Menu
-- Added resolution check command to Debug Menu
-- Added Remote Control (for AI development and automation tools)
-- Added launch flags to open directly into menus
-- Added scaler resolution display in Graphics menu
-- Added MCP wrapper + `gamectl` CLI for automation workflow
+- Debug Menu
+- Remote Control (for AI development and automation tools)
+- Launch flags to open directly into menus
+- Scaler resolution displays in Graphics menu
+- Web Build
 
 ## Building from Source
 

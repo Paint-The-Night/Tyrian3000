@@ -89,13 +89,30 @@ typedef struct
 
 static void build_completion_info(CompletionInfo *info);
 static int completion_selected_index(const CompletionInfo *info);
+static bool completion_match_is_current(const CompletionInfo *info, int idx);
 static bool completion_selection_executes_now(const CompletionInfo *info);
+static bool parse_scaling_mode_name(const char *raw, ScalingMode *out_mode);
 static void execute_command(const char *cmd);
 
 static void completion_reset_state(void)
 {
 	completion_selection = 0;
 	completion_signature[0] = '\0';
+}
+
+static bool console_input_is_exit_command(void)
+{
+	char value[CONSOLE_MAX_INPUT];
+	SDL_strlcpy(value, console_input, sizeof(value));
+
+	char *trimmed = value;
+	while (*trimmed == ' ')
+		++trimmed;
+	char *end = trimmed + strlen(trimmed);
+	while (end > trimmed && end[-1] == ' ')
+		*--end = '\0';
+
+	return SDL_strcasecmp(trimmed, "exit") == 0;
 }
 
 static bool str_starts_with_ci(const char *text, const char *prefix)
@@ -111,11 +128,13 @@ static bool token_equals_ci(const char *token, int token_len, const char *value)
 
 static void add_completion_match(const char *candidate, const char *fragment, const char **matches, int *match_count)
 {
+	const bool menu_first = true;
+
 	if (candidate == NULL || fragment == NULL || matches == NULL || match_count == NULL)
 		return;
 	if (*match_count >= COMPLETION_MAX_MATCHES)
 		return;
-	if (!str_starts_with_ci(candidate, fragment))
+	if (!menu_first && !str_starts_with_ci(candidate, fragment))
 		return;
 
 	for (int i = 0; i < *match_count; ++i)
@@ -126,6 +145,19 @@ static void add_completion_match(const char *candidate, const char *fragment, co
 
 	matches[*match_count] = candidate;
 	(*match_count)++;
+}
+
+static int scaler_menu_group(const char *name)
+{
+	if (name == NULL)
+		return 1;
+	if (SDL_strcasecmp(name, "None") == 0)
+		return 0;
+	if (SDL_strncasecmp(name, "hq", 2) == 0)
+		return 3;
+	if (SDL_strncasecmp(name, "Scale", 5) == 0)
+		return 2;
+	return 1;
 }
 
 static bool replace_input_range(int start, int old_len, const char *replacement, bool append_space)
@@ -190,8 +222,8 @@ static void completion_step_selection(int delta)
 static void build_completion_info(CompletionInfo *info)
 {
 	static const char *const root_commands[] = { "resolution", "exit" };
-	static const char *const res_commands[] = { "list", "show", "current", "set", "mode" };
-	static const char *const mode_values[] = { "center", "integer", "fit8:5", "fit4:3", "list", "show", "current" };
+	static const char *const res_commands[] = { "set", "mode" };
+	static const char *const mode_values[] = { "center", "integer", "fit8:5", "fit4:3" };
 
 	if (info == NULL)
 		return;
@@ -332,33 +364,16 @@ static void build_completion_info(CompletionInfo *info)
 	case COMPLETION_CTX_RES:
 		for (uint k = 0; k < COUNTOF(res_commands); ++k)
 			add_completion_match(res_commands[k], info->fragment, info->matches, &info->match_count);
-		/* Keep the "next word" list focused; only add scaler values once user starts typing a value. */
-		if (info->fragment[0] != '\0')
-		{
-			for (uint k = 0; k < scalers_count; ++k)
-			{
-				add_completion_match(scalers[k].name, info->fragment, info->matches, &info->match_count);
-				if (info->dynamic_count < COMPLETION_MAX_DYNAMIC)
-				{
-					snprintf(info->dynamic_values[info->dynamic_count], sizeof(info->dynamic_values[info->dynamic_count]),
-					         "%dx%d", scalers[k].width, scalers[k].height);
-					add_completion_match(info->dynamic_values[info->dynamic_count], info->fragment, info->matches, &info->match_count);
-					++info->dynamic_count;
-				}
-			}
-		}
 		break;
 
 	case COMPLETION_CTX_RES_SET:
-		for (uint k = 0; k < scalers_count; ++k)
+		for (int group = 0; group < 4; ++group)
 		{
-			add_completion_match(scalers[k].name, info->fragment, info->matches, &info->match_count);
-			if (info->dynamic_count < COMPLETION_MAX_DYNAMIC)
+			for (uint k = 0; k < scalers_count; ++k)
 			{
-				snprintf(info->dynamic_values[info->dynamic_count], sizeof(info->dynamic_values[info->dynamic_count]),
-				         "%dx%d", scalers[k].width, scalers[k].height);
-				add_completion_match(info->dynamic_values[info->dynamic_count], info->fragment, info->matches, &info->match_count);
-				++info->dynamic_count;
+				if (scaler_menu_group(scalers[k].name) != group)
+					continue;
+				add_completion_match(scalers[k].name, info->fragment, info->matches, &info->match_count);
 			}
 		}
 		break;
@@ -409,6 +424,16 @@ static bool debug_console_accept_completion(bool execute_terminal)
 	(void)replace_input_range(info.replace_start, info.replace_len, info.matches[selected], !execute_now);
 	if (execute_now && execute_terminal)
 	{
+		if (info.ctx == COMPLETION_CTX_ROOT &&
+		    SDL_strcasecmp(info.matches[selected], "exit") == 0)
+		{
+			console_active = false;
+			console_input[0] = '\0';
+			console_input_len = 0;
+			completion_reset_state();
+			return true;
+		}
+
 		execute_command(console_input);
 		console_input[0] = '\0';
 		console_input_len = 0;
@@ -453,6 +478,155 @@ static void build_input_preview(const CompletionInfo *info, char *out, size_t ou
 	out[new_len] = '\0';
 }
 
+static const char *completion_selected_description(const CompletionInfo *info)
+{
+	static char desc[CONSOLE_MAX_LINE_LEN];
+
+	desc[0] = '\0';
+	if (info == NULL || info->match_count <= 0)
+		return desc;
+
+	const int selected = completion_selected_index(info);
+	if (selected < 0)
+		return desc;
+
+	const char *choice = info->matches[selected];
+	if (choice == NULL || choice[0] == '\0')
+		return desc;
+
+	switch (info->ctx)
+	{
+	case COMPLETION_CTX_ROOT:
+		if (SDL_strcasecmp(choice, "resolution") == 0)
+			snprintf(desc, sizeof(desc), "Open resolution/scaler submenu.");
+		else if (SDL_strcasecmp(choice, "exit") == 0)
+			snprintf(desc, sizeof(desc), "Close debug console.");
+		break;
+
+	case COMPLETION_CTX_RES:
+		if (SDL_strcasecmp(choice, "set") == 0)
+			snprintf(desc, sizeof(desc), "Choose a scaler preset or resolution.");
+		else if (SDL_strcasecmp(choice, "mode") == 0)
+			snprintf(desc, sizeof(desc), "Choose scaling mode (fit/integer/etc).");
+		break;
+
+	case COMPLETION_CTX_RES_MODE:
+		if (SDL_strcasecmp(choice, "center") == 0)
+			snprintf(desc, sizeof(desc), "Center game without aspect scaling.");
+		else if (SDL_strcasecmp(choice, "integer") == 0)
+			snprintf(desc, sizeof(desc), "Use crisp integer pixel scaling.");
+		else if (SDL_strcasecmp(choice, "fit8:5") == 0)
+			snprintf(desc, sizeof(desc), "Fit to Tyrian 8:5 display aspect.");
+		else if (SDL_strcasecmp(choice, "fit4:3") == 0)
+			snprintf(desc, sizeof(desc), "Fit output into a 4:3 frame.");
+		break;
+
+	case COMPLETION_CTX_RES_SET:
+		for (uint i = 0; i < scalers_count; ++i)
+		{
+			if (SDL_strcasecmp(choice, scalers[i].name) == 0)
+			{
+				snprintf(desc, sizeof(desc), "%s  Output: %dx%d",
+				         scalers[i].description, scalers[i].width, scalers[i].height);
+				return desc;
+			}
+		}
+		snprintf(desc, sizeof(desc), "Choose scaler preset.");
+		break;
+
+	case COMPLETION_CTX_NONE:
+	default:
+		break;
+	}
+
+	return desc;
+}
+
+static void draw_tiny_text_fit(SDL_Surface *screen, int x, int y, const char *text,
+                               unsigned int colorbank, int brightness, int max_chars)
+{
+	if (screen == NULL || text == NULL || max_chars <= 0)
+		return;
+
+	char line[CONSOLE_MAX_LINE_LEN];
+	const int cap = (int)sizeof(line) - 1;
+	const int text_len = (int)strlen(text);
+	int copy_len = max_chars;
+	if (copy_len > cap)
+		copy_len = cap;
+
+	if (text_len <= copy_len)
+	{
+		SDL_strlcpy(line, text, sizeof(line));
+	}
+	else if (copy_len <= 3)
+	{
+		for (int i = 0; i < copy_len; ++i)
+			line[i] = '.';
+		line[copy_len] = '\0';
+	}
+	else
+	{
+		memcpy(line, text, (size_t)(copy_len - 3));
+		line[copy_len - 3] = '.';
+		line[copy_len - 2] = '.';
+		line[copy_len - 1] = '.';
+		line[copy_len] = '\0';
+	}
+
+	JE_outText(screen, x, y, line, colorbank, brightness);
+}
+
+static int draw_tiny_text_wrap(SDL_Surface *screen, int x, int y, const char *text,
+                               unsigned int colorbank, int brightness, int max_chars, int max_rows)
+{
+	if (screen == NULL || text == NULL || max_chars <= 0 || max_rows <= 0)
+		return 0;
+
+	int rows = 0;
+	const char *p = text;
+	while (*p != '\0' && rows < max_rows)
+	{
+		while (*p == ' ')
+			++p;
+		if (*p == '\0')
+			break;
+
+		int take = max_chars;
+		const int remain = (int)strlen(p);
+		if (remain < take)
+			take = remain;
+
+		if (p[take] != '\0' && p[take] != ' ')
+		{
+			for (int i = take - 1; i > 0; --i)
+			{
+				if (p[i] == ' ')
+				{
+					take = i;
+					break;
+				}
+			}
+		}
+		while (take > 0 && p[take - 1] == ' ')
+			--take;
+		if (take <= 0)
+			take = max_chars;
+
+		char line[CONSOLE_MAX_LINE_LEN];
+		const int copy_len = take < (int)sizeof(line) - 1 ? take : (int)sizeof(line) - 1;
+		memcpy(line, p, (size_t)copy_len);
+		line[copy_len] = '\0';
+
+		draw_tiny_text_fit(screen, x, y, line, colorbank, brightness, max_chars);
+		++rows;
+		y += CONSOLE_LINE_HEIGHT;
+		p += take;
+	}
+
+	return rows;
+}
+
 static int completion_selected_index(const CompletionInfo *info)
 {
 	if (info == NULL || info->match_count <= 0)
@@ -460,6 +634,33 @@ static int completion_selected_index(const CompletionInfo *info)
 	if (completion_selection < 0 || completion_selection >= info->match_count)
 		return 0;
 	return completion_selection;
+}
+
+static bool completion_match_is_current(const CompletionInfo *info, int idx)
+{
+	if (info == NULL || idx < 0 || idx >= info->match_count)
+		return false;
+
+	const char *choice = info->matches[idx];
+	if (choice == NULL)
+		return false;
+
+	switch (info->ctx)
+	{
+	case COMPLETION_CTX_RES_MODE:
+	{
+		ScalingMode mode = scaling_mode;
+		return parse_scaling_mode_name(choice, &mode) && mode == scaling_mode;
+	}
+
+	case COMPLETION_CTX_RES_SET:
+		if (SDL_strcasecmp(choice, scalers[scaler].name) == 0)
+			return true;
+		return false;
+
+	default:
+		return false;
+	}
 }
 
 static bool completion_selection_executes_now(const CompletionInfo *info)
@@ -839,6 +1040,15 @@ void debug_console_handle_keydown(SDL_Scancode scan, SDL_Keymod mod)
 	case SDL_SCANCODE_RETURN:
 	case SDL_SCANCODE_KP_ENTER:
 	{
+		if (console_input_is_exit_command())
+		{
+			console_active = false;
+			console_input[0] = '\0';
+			console_input_len = 0;
+			completion_reset_state();
+			break;
+		}
+
 		if (debug_console_accept_completion(true))
 			break;
 
@@ -932,32 +1142,31 @@ void debug_console_draw(SDL_Surface *screen)
 	/* Bright separator line at the bottom of the console. */
 	JE_barBright(screen, 0, CONSOLE_HEIGHT, 319, CONSOLE_HEIGHT);
 
+	const int right_pane_x = 170;
+	const int input_divider_y = CONSOLE_HEIGHT - 12;
+	JE_barBright(screen, right_pane_x, 0, right_pane_x, CONSOLE_HEIGHT - 1);
+	JE_barBright(screen, 0, input_divider_y - 2, right_pane_x - 1, input_divider_y - 2);
+
 	CompletionInfo completion;
 	build_completion_info(&completion);
 	if (completion.ctx != COMPLETION_CTX_NONE)
 		(void)completion_sync_signature(&completion);
 
-	int y = 2;
-	const int content_bottom = CONSOLE_HEIGHT - 12;
+	const int left_text_x = CONSOLE_TEXT_X;
+	const int right_text_x = right_pane_x + 4;
+	const int left_chars = (right_pane_x - left_text_x - 4) / 6;
+	const int right_chars = (320 - right_text_x - 4) / 6;
 	const bool has_completions = (completion.ctx != COMPLETION_CTX_NONE && completion.match_count > 0);
 
-	/* Show recent output at the top (limit to a few rows so completions fit). */
-	if (console_line_count > 0)
-	{
-		const int max_output_rows = has_completions ? 4 : (content_bottom - y) / CONSOLE_LINE_HEIGHT;
-		const int visible = max_output_rows < console_line_count ? max_output_rows : console_line_count;
-		const int first = console_line_count - visible;
-		for (int i = 0; i < visible; ++i)
-		{
-			JE_outText(screen, CONSOLE_TEXT_X, y, console_lines[first + i], 14, 2);
-			y += CONSOLE_LINE_HEIGHT;
-		}
-	}
+	/* Left-top pane: available commands. */
+	int y_left = 2;
+	draw_tiny_text_fit(screen, left_text_x, y_left, "Commands", 15, 4, left_chars);
+	y_left += CONSOLE_LINE_HEIGHT;
 
-	/* Draw autocomplete options below the output. */
-	if (has_completions && y < content_bottom)
+	const int left_top_bottom = input_divider_y - 2;
+	if (has_completions && y_left < left_top_bottom)
 	{
-		const int list_rows = (content_bottom - y) / CONSOLE_LINE_HEIGHT;
+		const int list_rows = (left_top_bottom - y_left) / CONSOLE_LINE_HEIGHT;
 
 		if (list_rows > 0)
 		{
@@ -982,18 +1191,36 @@ void debug_console_draw(SDL_Surface *screen)
 					break;
 
 				char line[CONSOLE_MAX_LINE_LEN];
-				snprintf(line, sizeof(line), "%c %s", idx == selected ? '>' : ' ', completion.matches[idx]);
-				JE_outText(screen, CONSOLE_TEXT_X, y, line, idx == selected ? 15 : 14, 2);
-				y += CONSOLE_LINE_HEIGHT;
+				snprintf(line, sizeof(line), "%c%c %s",
+				         idx == selected ? '>' : ' ',
+				         completion_match_is_current(&completion, idx) ? '*' : ' ',
+				         completion.matches[idx]);
+				draw_tiny_text_fit(screen, left_text_x, y_left, line, idx == selected ? 15 : 14, 2, left_chars);
+				y_left += CONSOLE_LINE_HEIGHT;
 			}
 		}
 	}
+	else
+	{
+		draw_tiny_text_fit(screen, left_text_x, y_left, "(no matches)", 14, 2, left_chars);
+	}
 
-	/* Draw input line at the bottom of the console area. */
+	/* Left-bottom pane: current command input. */
 	char input_preview[CONSOLE_MAX_INPUT];
 	build_input_preview(&completion, input_preview, sizeof(input_preview));
 
 	char input_display[CONSOLE_MAX_INPUT + 4];
 	snprintf(input_display, sizeof(input_display), "> %s_", input_preview);
-	JE_outText(screen, CONSOLE_TEXT_X, CONSOLE_HEIGHT - 10, input_display, 15, 4);
+	draw_tiny_text_fit(screen, left_text_x, CONSOLE_HEIGHT - 10, input_display, 15, 4, left_chars);
+
+	/* Right pane: selected item description only. */
+	if (has_completions)
+	{
+		const char *help_text = completion_selected_description(&completion);
+		if (help_text[0] != '\0')
+		{
+			const int max_rows = (CONSOLE_HEIGHT - 4) / CONSOLE_LINE_HEIGHT;
+			(void)draw_tiny_text_wrap(screen, right_text_x, 2, help_text, 14, 2, right_chars, max_rows);
+		}
+	}
 }

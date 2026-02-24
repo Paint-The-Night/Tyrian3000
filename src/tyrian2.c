@@ -3338,16 +3338,14 @@ bool titleScreen(void)
 				memcpy(VGAScreen2->pixels, VGAScreen->pixels, VGAScreen2->pitch * VGAScreen2->h);
 
 				blit_sprite(VGAScreenSeg, 11, 62, PLANET_SHAPES, 146); // tyrian logo
-				blit_sprite(VGAScreenSeg, 155, 41, PLANET_SHAPES, 151); // 2000(tm)
 				fade_palette(colors, 10, 0, 255 - 16);
 
-				for (int yLogo = 60, y2K = 45; yLogo >= 4; yLogo -= 2, ++y2K)
+				for (int yLogo = 60; yLogo >= 4; yLogo -= 2)
 				{
 					setDelay(2);
 
 					memcpy(VGAScreen->pixels, VGAScreen2->pixels, VGAScreen->pitch * VGAScreen->h);
 					blit_sprite(VGAScreenSeg, 11, yLogo, PLANET_SHAPES, 146); // tyrian logo
-					blit_sprite(VGAScreenSeg, 155, y2K, PLANET_SHAPES, 151); // 2000(tm)
 					JE_showVGA();
 
 					service_wait_delay();
@@ -3357,7 +3355,6 @@ bool titleScreen(void)
 			else
 			{
 				blit_sprite(VGAScreenSeg, 11, 4, PLANET_SHAPES, 146); // tyrian logo
-				blit_sprite(VGAScreenSeg, 155, 73, PLANET_SHAPES, 151); // 2000(tm)
 				fade_palette(colors, 10, 0, 255 - 16);
 			}
 

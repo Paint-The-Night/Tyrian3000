@@ -13,11 +13,14 @@ SRCS := $(wildcard src/*.c)
 OBJS := $(SRCS:src/%.c=$(OBJ_DIR)/%.o)
 DEPS := $(SRCS:src/%.c=$(OBJ_DIR)/%.d)
 
+OPENTYRIAN_VERSION ?= $(shell date +"%Y-%m-%d-%H" && \
+                               touch src/opentyrian_version.h)
+
 CPPFLAGS ?= -MMD
 CPPFLAGS += -DNDEBUG
 CPPFLAGS += -DTARGET_UNIX
 CPPFLAGS += -DTYRIAN_DIR='"$(TYRIAN_DIR)"'
-CPPFLAGS += -DOPENTYRIAN_VERSION='"web-dev"'
+CPPFLAGS += -DOPENTYRIAN_VERSION='"$(OPENTYRIAN_VERSION)"'
 
 CFLAGS ?= -std=iso9899:1999 \
           -pedantic \

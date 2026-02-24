@@ -20,8 +20,6 @@ CC ?= gcc
 INSTALL ?= install
 PKG_CONFIG ?= pkg-config
 
-VCS_IDREV ?= (git describe --tags || git rev-parse --short HEAD)
-
 INSTALL_PROGRAM ?= $(INSTALL)
 INSTALL_DATA ?= $(INSTALL) -m 644
 
@@ -56,8 +54,8 @@ ifeq ($(WITH_NETWORK), true)
     EXTRA_CPPFLAGS += -DWITH_NETWORK
 endif
 
-OPENTYRIAN_VERSION := $(shell $(VCS_IDREV) 2>/dev/null && \
-                              touch src/opentyrian_version.h)
+OPENTYRIAN_VERSION ?= $(shell date +"%Y-%m-%d-%H" && \
+                               touch src/opentyrian_version.h)
 ifneq ($(OPENTYRIAN_VERSION), )
     EXTRA_CPPFLAGS += -DOPENTYRIAN_VERSION='"$(OPENTYRIAN_VERSION)"'
 endif
