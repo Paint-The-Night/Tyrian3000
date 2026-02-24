@@ -6,6 +6,7 @@ tyrian2000.zip
 
 # Claude Code
 .claude/
+.codex/
 
 opentyrian.cfg
 tyrian.cfg
@@ -17,6 +18,7 @@ tyrian.sav
 
 # Make build output
 /obj/
+/build/
 /src/*.gch
 /opentyrian
 /opentyrian2000

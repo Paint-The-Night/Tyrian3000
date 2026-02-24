@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tyrian 3000 (Web)</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f13;
+      --panel: #111821;
+      --text: #e7edf5;
+      --muted: #8ca0b3;
+      --line: #233241;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: radial-gradient(circle at top, #132236, var(--bg) 55%);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    .page {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 100%;
+      gap: 10px;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    .bar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+    #status {
+      color: var(--muted);
+    }
+    #canvas-wrap {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #000;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+    }
+    #canvas {
+      outline: none;
+      max-width: 100%;
+      max-height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    #log {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0b1219;
+      color: #c9d6e3;
+      font-size: 12px;
+      line-height: 1.35;
+      padding: 8px;
+      margin: 0;
+      height: 160px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    progress {
+      width: 220px;
+      height: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="bar">
+      <strong>Tyrian 3000 Web</strong>
+      <span id="status">Downloading...</span>
+      <progress id="progress" max="100" value="0"></progress>
+    </div>
+    <div id="canvas-wrap">
+      <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    </div>
+    <pre id="log"></pre>
+  </div>
+
+  <script>
+    const statusElement = document.getElementById("status");
+    const progressElement = document.getElementById("progress");
+    const canvasElement = document.getElementById("canvas");
+    const logElement = document.getElementById("log");
+
+    function appendLog(line) {
+      if (!logElement) return;
+      logElement.textContent += line + "\n";
+      logElement.scrollTop = logElement.scrollHeight;
+      console.log(line);
+    }
+
+    function formatErrorHeader(kind, message, source, line, col) {
+      const src = source || "unknown";
+      return `[${kind}] ${message} @ ${src}:${line || 0}:${col || 0}`;
+    }
+
+    function setStatus(text) {
+      if (statusElement) statusElement.textContent = text;
+    }
+
+    var Module = {
+      preRun: [],
+      postRun: [],
+      canvas: canvasElement,
+      print: (...args) => appendLog(args.join(" ")),
+      printErr: (...args) => appendLog("[stderr] " + args.join(" ")),
+      setStatus: function(text) {
+        if (!text) {
+          setStatus("Ready");
+          progressElement.value = 100;
+          return;
+        }
+        const m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+        if (m) {
+          setStatus(m[1].trim());
+          progressElement.max = parseInt(m[4], 10) || 100;
+          progressElement.value = parseInt(m[2], 10) || 0;
+        } else {
+          setStatus(text);
+        }
+      },
+      monitorRunDependencies: function(left) {
+        const done = this.totalDependencies ? (this.totalDependencies - left) : 0;
+        this.totalDependencies = Math.max(this.totalDependencies || 0, left);
+        this.setStatus(left ? `Preparing... (${done}/${this.totalDependencies})` : "All downloads complete.");
+      },
+      onAbort: function(reason) {
+        appendLog("[abort] " + reason);
+      }
+    };
+
+    window.onerror = function(message, source, line, col, error) {
+      setStatus("Crash: see log");
+      appendLog(formatErrorHeader("window.onerror", message, source, line, col));
+      if (error && error.stack) appendLog(error.stack);
+      return false;
+    };
+
+    window.onunhandledrejection = function(event) {
+      setStatus("Crash: see log");
+      const reason = event && event.reason;
+      appendLog("[unhandledrejection] " + (reason && (reason.stack || reason.message) || String(reason)));
+    };
+  </script>
+
+  {{{ SCRIPT }}}
+</body>
+</html>

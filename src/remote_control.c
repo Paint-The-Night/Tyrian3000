@@ -13,7 +13,7 @@
 #include "video.h"
 #include "video_scale.h"
 
-#ifndef TARGET_WIN32
+#if !defined(TARGET_WIN32) && !defined(__EMSCRIPTEN__)
 
 #include <sys/socket.h>
 #include <sys/un.h>

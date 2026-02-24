@@ -1,0 +1,59 @@
+SHELL = /bin/sh
+
+EMCC ?= emcc
+TARGET ?= opentyrian2000
+BUILD_DIR ?= build/web
+OBJ_DIR ?= $(BUILD_DIR)/obj
+SHELL_FILE ?= web/shell.html
+
+TYRIAN_DIR ?= /data/tyrian2000
+PRELOAD_DIR ?= data/tyrian2000
+
+SRCS := $(wildcard src/*.c)
+OBJS := $(SRCS:src/%.c=$(OBJ_DIR)/%.o)
+DEPS := $(SRCS:src/%.c=$(OBJ_DIR)/%.d)
+
+CPPFLAGS ?= -MMD
+CPPFLAGS += -DNDEBUG
+CPPFLAGS += -DTARGET_UNIX
+CPPFLAGS += -DTYRIAN_DIR='"$(TYRIAN_DIR)"'
+CPPFLAGS += -DOPENTYRIAN_VERSION='"web-dev"'
+
+CFLAGS ?= -std=iso9899:1999 \
+          -pedantic \
+          -Wall \
+          -Wextra \
+          -Wno-format-truncation \
+          -Wno-missing-field-initializers \
+          -O2
+
+EMLDFLAGS ?=
+EMLDFLAGS += -sUSE_SDL=2
+EMLDFLAGS += -sALLOW_MEMORY_GROWTH=1
+EMLDFLAGS += -sASYNCIFY
+EMLDFLAGS += -sASYNCIFY_STACK_SIZE=262144
+EMLDFLAGS += -sSTACK_SIZE=1048576
+EMLDFLAGS += -sASSERTIONS=1
+EMLDFLAGS += -sFORCE_FILESYSTEM=1
+EMLDFLAGS += -sEXPORTED_RUNTIME_METHODS=ccall,cwrap
+EMLDFLAGS += --preload-file $(PRELOAD_DIR)@$(TYRIAN_DIR)
+EMLDFLAGS += --shell-file $(SHELL_FILE)
+
+OUT_HTML := $(BUILD_DIR)/$(TARGET).html
+
+.PHONY: all
+all: $(OUT_HTML)
+
+.PHONY: clean
+clean:
+	rm -rf $(BUILD_DIR)
+
+$(OUT_HTML): $(OBJS)
+	@mkdir -p "$(dir $@)"
+	$(EMCC) $(CFLAGS) -sUSE_SDL=2 $(EMLDFLAGS) -o "$@" $^ -lm
+
+-include $(DEPS)
+
+$(OBJ_DIR)/%.o: src/%.c
+	@mkdir -p "$(dir $@)"
+	$(EMCC) $(CPPFLAGS) $(CFLAGS) -sUSE_SDL=2 -c -o "$@" "$<"

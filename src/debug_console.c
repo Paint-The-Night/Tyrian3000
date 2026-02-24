@@ -30,7 +30,7 @@
 #define CONSOLE_MAX_INPUT   128
 #define CONSOLE_MAX_LINES   12
 #define CONSOLE_MAX_LINE_LEN 52
-#define CONSOLE_HEIGHT      100  /* pixels from top of 320x200 screen */
+#define CONSOLE_HEIGHT      140  /* pixels from top of 320x200 screen */
 #define CONSOLE_TEXT_X      4
 #define CONSOLE_LINE_HEIGHT 8
 #define COMPLETION_MAX_MATCHES 64
@@ -47,7 +47,6 @@ static int  console_line_count = 0;
 
 static char startup_cmd[CONSOLE_MAX_INPUT] = "";
 static bool startup_done = false;
-static bool pending_screenshot = false;
 static int completion_selection = 0;
 static char completion_signature[COMPLETION_SIG_LEN] = "";
 
@@ -190,7 +189,7 @@ static void completion_step_selection(int delta)
 
 static void build_completion_info(CompletionInfo *info)
 {
-	static const char *const root_commands[] = { "resolution", "screenshot", "clear" };
+	static const char *const root_commands[] = { "resolution", "exit" };
 	static const char *const res_commands[] = { "list", "show", "current", "set", "mode" };
 	static const char *const mode_values[] = { "center", "integer", "fit8:5", "fit4:3", "list", "show", "current" };
 
@@ -480,7 +479,7 @@ static bool completion_selection_executes_now(const CompletionInfo *info)
 	{
 	case COMPLETION_CTX_ROOT:
 		/* Keep "resolution" as submenu-first; execute one-shot commands immediately. */
-		return SDL_strcasecmp(choice, "screenshot") == 0 || SDL_strcasecmp(choice, "clear") == 0;
+		return SDL_strcasecmp(choice, "exit") == 0;
 
 	case COMPLETION_CTX_RES:
 		/* "set" and "mode" open submenus; other values are terminal. */
@@ -753,26 +752,6 @@ static void cmd_resolution_set(const char *arg)
 	console_print(buf);
 }
 
-static void cmd_clear(void)
-{
-	console_line_count = 0;
-}
-
-static void cmd_screenshot(void)
-{
-	const char *path = "/tmp/tyrian_screenshot.bmp";
-	if (video_save_surface_rgb(VGAScreen, path))
-	{
-		char buf[CONSOLE_MAX_LINE_LEN];
-		snprintf(buf, sizeof(buf), "Saved: %s", path);
-		console_print(buf);
-	}
-	else
-	{
-		console_print("Screenshot failed.");
-	}
-}
-
 static void execute_command(const char *cmd)
 {
 	/* Echo the command. */
@@ -804,10 +783,12 @@ static void execute_command(const char *cmd)
 
 	if (strcmp(verb, "resolution") == 0)
 		cmd_resolution_set(arg);
-	else if (strcmp(verb, "screenshot") == 0)
-		cmd_screenshot();
-	else if (strcmp(verb, "clear") == 0)
-		cmd_clear();
+	else if (strcmp(verb, "exit") == 0)
+	{
+		console_active = false;
+		completion_reset_state();
+		return;
+	}
 	else
 	{
 		char msg[CONSOLE_MAX_LINE_LEN];
@@ -928,16 +909,6 @@ void debug_console_set_startup_command(const char *cmd)
 	snprintf(startup_cmd, sizeof(startup_cmd), "%s", cmd);
 }
 
-bool debug_console_wants_screenshot(void)
-{
-	if (pending_screenshot)
-	{
-		pending_screenshot = false;
-		return true;
-	}
-	return false;
-}
-
 void debug_console_draw(SDL_Surface *screen)
 {
 	/* Auto-exec startup command on first draw. */
@@ -950,7 +921,6 @@ void debug_console_draw(SDL_Surface *screen)
 		completion_reset_state();
 		console_print("Tyrian 3000 Debug Console.");
 		execute_command(startup_cmd);
-		pending_screenshot = true;
 	}
 
 	if (!console_active)
@@ -967,18 +937,29 @@ void debug_console_draw(SDL_Surface *screen)
 	if (completion.ctx != COMPLETION_CTX_NONE)
 		(void)completion_sync_signature(&completion);
 
-	/* Top section: use full space for autocomplete options. */
-	const int options_top = 2;
-	const int options_bottom = CONSOLE_HEIGHT - 12;
-	const int option_rows = (options_bottom - options_top) / CONSOLE_LINE_HEIGHT;
-	if (option_rows > 0)
-	{
-		char header[CONSOLE_MAX_LINE_LEN];
-		snprintf(header, sizeof(header), "Options (%d) Up/Down Tab select Enter/-> use <- back", completion.match_count);
-		JE_outText(screen, CONSOLE_TEXT_X, options_top, header, 14, 4);
+	int y = 2;
+	const int content_bottom = CONSOLE_HEIGHT - 12;
+	const bool has_completions = (completion.ctx != COMPLETION_CTX_NONE && completion.match_count > 0);
 
-		const int list_rows = option_rows - 1;
-		if (list_rows > 0 && completion.match_count > 0)
+	/* Show recent output at the top (limit to a few rows so completions fit). */
+	if (console_line_count > 0)
+	{
+		const int max_output_rows = has_completions ? 4 : (content_bottom - y) / CONSOLE_LINE_HEIGHT;
+		const int visible = max_output_rows < console_line_count ? max_output_rows : console_line_count;
+		const int first = console_line_count - visible;
+		for (int i = 0; i < visible; ++i)
+		{
+			JE_outText(screen, CONSOLE_TEXT_X, y, console_lines[first + i], 14, 2);
+			y += CONSOLE_LINE_HEIGHT;
+		}
+	}
+
+	/* Draw autocomplete options below the output. */
+	if (has_completions && y < content_bottom)
+	{
+		const int list_rows = (content_bottom - y) / CONSOLE_LINE_HEIGHT;
+
+		if (list_rows > 0)
 		{
 			int selected = completion_selection;
 			if (selected < 0 || selected >= completion.match_count)
@@ -994,7 +975,6 @@ void debug_console_draw(SDL_Surface *screen)
 					first = completion.match_count - list_rows;
 			}
 
-			int y = options_top + CONSOLE_LINE_HEIGHT;
 			for (int row = 0; row < list_rows; ++row)
 			{
 				const int idx = first + row;
@@ -1006,10 +986,6 @@ void debug_console_draw(SDL_Surface *screen)
 				JE_outText(screen, CONSOLE_TEXT_X, y, line, idx == selected ? 15 : 14, 2);
 				y += CONSOLE_LINE_HEIGHT;
 			}
-		}
-		else if (list_rows > 0)
-		{
-			JE_outText(screen, CONSOLE_TEXT_X, options_top + CONSOLE_LINE_HEIGHT, "  (no matches)", 12, 2);
 		}
 	}
 

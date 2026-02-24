@@ -25,6 +25,10 @@
 #include "remote_control.h"
 #include "video_scale.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+#endif
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -270,7 +274,11 @@ bool init_scaler(unsigned int new_scaler)
 		// Changing scalers, when not in fullscreen mode, forces the window
 		// to resize to exactly match the scaler's output dimensions.
 		SDL_SetWindowSize(main_window, w, h);
+#ifdef __EMSCRIPTEN__
+		emscripten_set_canvas_element_size("#canvas", w, h);
+#else
 		window_center_in_display(window_get_display_index());
+#endif
 	}
 
 	switch (bpp)
@@ -375,9 +383,6 @@ void JE_showVGA(void)
 			}
 		}
 		debug_console_draw(console_scratch);
-
-		if (debug_console_wants_screenshot())
-			video_save_surface_rgb(console_scratch, "/tmp/tyrian_console.bmp");
 
 		scale_and_flip(console_scratch);
 		remote_control_on_frame(console_scratch);

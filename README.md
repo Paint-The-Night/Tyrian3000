@@ -64,6 +64,38 @@ make debug TYRIAN_DIR=data/tyrian2000
 ./opentyrian2000
 ```
 
+### Experimental Web Build (WebAssembly)
+
+Requirements:
+
+- **Emscripten** (`emcc`) 3.x+
+
+Build:
+
+```bash
+make -f Makefile.web
+```
+
+Artifacts are written to `build/web/`:
+
+- `opentyrian2000.html`
+- `opentyrian2000.js`
+- `opentyrian2000.wasm`
+- `opentyrian2000.data` (preloaded Tyrian 2000 data files)
+
+Run locally:
+
+```bash
+python3 -m http.server 8080 --directory build/web
+```
+
+Then open: `http://127.0.0.1:8080/opentyrian2000.html`
+
+Notes:
+
+- Browser build is currently single-player only (no UDP network multiplayer).
+- Unix-socket remote control is disabled on web builds.
+
 ## AI Remote Control
 
 Tyrian 3000 supports an in-process remote control socket for AI-driven testing.

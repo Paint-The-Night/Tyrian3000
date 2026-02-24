@@ -35,9 +35,6 @@ void debug_console_draw(SDL_Surface *screen);
 /* Auto-exec: set a command to run on startup (used by --console-exec). */
 void debug_console_set_startup_command(const char *cmd);
 
-/* Screenshot flag: returns true once after a screenshot was requested. */
-bool debug_console_wants_screenshot(void);
-
 /* Programmatic command execution (for remote control/testing). */
 void debug_console_execute_command(const char *cmd);
 const char *debug_console_get_last_line(void);
