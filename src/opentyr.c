@@ -236,17 +236,16 @@ void setupMenu(void)
 	} Menu;
 
 	static const Menu menus[] = {
-		[MENU_SETUP] = {
-			.header = "Setup",
-			.items = {
-				{ MENU_ITEM_GRAPHICS, "Graphics...", "Change the graphics settings." },
-				{ MENU_ITEM_SOUND, "Sound...", "Change the sound settings." },
-				{ MENU_ITEM_JUKEBOX, "Jukebox", "Listen to the music of Tyrian." },
-				// { MENU_ITEM_DESTRUCT, "Destruct", "Play a bonus mini-game." },
-				{ MENU_ITEM_DONE, "Done", "Return to the main menu." },
-				{ -1 }
+			[MENU_SETUP] = {
+				.header = "Setup",
+				.items = {
+					{ MENU_ITEM_GRAPHICS, "Graphics...", "Change the graphics settings." },
+					{ MENU_ITEM_SOUND, "Sound...", "Change the sound settings." },
+					// { MENU_ITEM_DESTRUCT, "Destruct", "Play a bonus mini-game." },
+					{ MENU_ITEM_DONE, "Done", "Return to the main menu." },
+					{ -1 }
+				},
 			},
-		},
 		[MENU_GRAPHICS] = {
 			.header = "Graphics",
 			.items = {

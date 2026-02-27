@@ -72,13 +72,13 @@ LDFLAGS ?=
 LDLIBS ?=
 
 ifeq ($(WITH_NETWORK), true)
-    SDL_CPPFLAGS := $(shell $(PKG_CONFIG) sdl2 SDL2_net --cflags)
-    SDL_LDFLAGS := $(shell $(PKG_CONFIG) sdl2 SDL2_net --libs-only-L --libs-only-other)
-    SDL_LDLIBS := $(shell $(PKG_CONFIG) sdl2 SDL2_net --libs-only-l)
+    SDL_CPPFLAGS := $(shell $(PKG_CONFIG) sdl2 SDL2_net SDL2_image --cflags)
+    SDL_LDFLAGS := $(shell $(PKG_CONFIG) sdl2 SDL2_net SDL2_image --libs-only-L --libs-only-other)
+    SDL_LDLIBS := $(shell $(PKG_CONFIG) sdl2 SDL2_net SDL2_image --libs-only-l)
 else
-    SDL_CPPFLAGS := $(shell $(PKG_CONFIG) sdl2 --cflags)
-    SDL_LDFLAGS := $(shell $(PKG_CONFIG) sdl2 --libs-only-L --libs-only-other)
-    SDL_LDLIBS := $(shell $(PKG_CONFIG) sdl2 --libs-only-l)
+    SDL_CPPFLAGS := $(shell $(PKG_CONFIG) sdl2 SDL2_image --cflags)
+    SDL_LDFLAGS := $(shell $(PKG_CONFIG) sdl2 SDL2_image --libs-only-L --libs-only-other)
+    SDL_LDLIBS := $(shell $(PKG_CONFIG) sdl2 SDL2_image --libs-only-l)
 endif
 
 ALL_CPPFLAGS = -DTARGET_$(PLATFORM) \

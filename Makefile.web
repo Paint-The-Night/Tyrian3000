@@ -32,6 +32,8 @@ CFLAGS ?= -std=iso9899:1999 \
 
 EMLDFLAGS ?=
 EMLDFLAGS += -sUSE_SDL=2
+EMLDFLAGS += -sUSE_SDL_IMAGE=2
+EMLDFLAGS += -sSDL2_IMAGE_FORMATS='["png"]'
 EMLDFLAGS += -sALLOW_MEMORY_GROWTH=1
 EMLDFLAGS += -sASYNCIFY
 EMLDFLAGS += -sASYNCIFY_STACK_SIZE=262144
@@ -40,6 +42,8 @@ EMLDFLAGS += -sASSERTIONS=1
 EMLDFLAGS += -sFORCE_FILESYSTEM=1
 EMLDFLAGS += -sEXPORTED_RUNTIME_METHODS=ccall,cwrap
 EMLDFLAGS += --preload-file $(PRELOAD_DIR)@$(TYRIAN_DIR)
+EMLDFLAGS += --preload-file data/tyrian2000/logo-gravitium-war.png@$(TYRIAN_DIR)/logo-gravitium-war.png
+EMLDFLAGS += --preload-file data/tyrian2000/logo-title.png@$(TYRIAN_DIR)/logo-title.png
 EMLDFLAGS += --shell-file $(SHELL_FILE)
 
 OUT_HTML := $(BUILD_DIR)/$(TARGET).html
@@ -53,10 +57,10 @@ clean:
 
 $(OUT_HTML): $(OBJS)
 	@mkdir -p "$(dir $@)"
-	$(EMCC) $(CFLAGS) -sUSE_SDL=2 $(EMLDFLAGS) -o "$@" $^ -lm
+	$(EMCC) $(CFLAGS) -sUSE_SDL=2 -sUSE_SDL_IMAGE=2 $(EMLDFLAGS) -o "$@" $^ -lm
 
 -include $(DEPS)
 
 $(OBJ_DIR)/%.o: src/%.c
 	@mkdir -p "$(dir $@)"
-	$(EMCC) $(CPPFLAGS) $(CFLAGS) -sUSE_SDL=2 -c -o "$@" "$<"
+	$(EMCC) $(CPPFLAGS) $(CFLAGS) -sUSE_SDL=2 -sUSE_SDL_IMAGE=2 -c -o "$@" "$<"

@@ -59,7 +59,7 @@ static ScalerFunction scaler_function;
 
 static void init_renderer(void);
 static void deinit_renderer(void);
-static void init_texture(void);
+static bool init_texture(unsigned int scaler_index);
 static void deinit_texture(void);
 
 static int window_get_display_index(void);
@@ -106,8 +106,16 @@ void init_video(void)
 
 	reinit_fullscreen(fullscreen_display);
 	init_renderer();
-	init_texture();
-	init_scaler(scaler);
+	if (!init_scaler(scaler))
+	{
+		fprintf(stderr, "warning: failed to initialize scaler '%s' (%dx%d), falling back to 'None'\n",
+		        scalers[scaler].name, scalers[scaler].width, scalers[scaler].height);
+		if (!init_scaler(0))
+		{
+			fprintf(stderr, "error: failed to initialize fallback scaler 'None'\n");
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	SDL_ShowWindow(main_window);
 
@@ -132,6 +140,9 @@ void deinit_video(void)
 
 static void init_renderer(void)
 {
+	// Keep nearest-neighbor filtering so pixel art stays crisp when SDL scales.
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+
 	main_window_renderer = SDL_CreateRenderer(main_window, -1, 0);
 
 	if (main_window_renderer == NULL)
@@ -150,24 +161,49 @@ static void deinit_renderer(void)
 	}
 }
 
-static void init_texture(void)
+static bool init_texture(unsigned int scaler_index)
 {
 	assert(main_window_renderer != NULL);
 
 	int bpp = 32; // TODOSDL2
 	Uint32 format = bpp == 32 ? SDL_PIXELFORMAT_RGB888 : SDL_PIXELFORMAT_RGB565;
-	int scaler_w = scalers[scaler].width;
-	int scaler_h = scalers[scaler].height;
+	const int requested_w = scalers[scaler_index].width;
+	const int requested_h = scalers[scaler_index].height;
+	int texture_w = requested_w;
+	int texture_h = requested_h;
 
-	main_window_tex_format = SDL_AllocFormat(format);
-
-	main_window_texture = SDL_CreateTexture(main_window_renderer, format, SDL_TEXTUREACCESS_STREAMING, scaler_w, scaler_h);
-
-	if (main_window_texture == NULL)
+#ifdef __EMSCRIPTEN__
+	/* WebGL builds can fail creating a 1280x800 streaming texture for the 4x preset.
+	   Keep 4x selected, but stream a base 320x200 texture and let renderer/window sizing
+	   present it at 4x. */
+	if (strcmp(scalers[scaler_index].name, "4x") == 0)
 	{
-		fprintf(stderr, "error: failed to create scaler texture %dx%dx%s: %s\n", scaler_w, scaler_h, SDL_GetPixelFormatName(format), SDL_GetError());
-		exit(EXIT_FAILURE);
+		texture_w = vga_width;
+		texture_h = vga_height;
 	}
+#endif
+
+	SDL_PixelFormat *new_format = SDL_AllocFormat(format);
+	if (new_format == NULL)
+	{
+		fprintf(stderr, "error: failed to allocate scaler pixel format %s: %s\n",
+		        SDL_GetPixelFormatName(format), SDL_GetError());
+		return false;
+	}
+
+	SDL_Texture *new_texture = SDL_CreateTexture(main_window_renderer, format, SDL_TEXTUREACCESS_STREAMING, texture_w, texture_h);
+	if (new_texture == NULL)
+	{
+		fprintf(stderr, "error: failed to create scaler texture %dx%d (requested %dx%d) x %s: %s\n",
+		        texture_w, texture_h, requested_w, requested_h, SDL_GetPixelFormatName(format), SDL_GetError());
+		SDL_FreeFormat(new_format);
+		return false;
+	}
+
+	deinit_texture();
+	main_window_tex_format = new_format;
+	main_window_texture = new_texture;
+	return true;
 }
 
 static void deinit_texture(void)
@@ -260,14 +296,17 @@ void toggle_fullscreen(void)
 
 bool init_scaler(unsigned int new_scaler)
 {
+	if (new_scaler >= scalers_count)
+		return false;
+
 	int w = scalers[new_scaler].width,
 	    h = scalers[new_scaler].height;
-	int bpp = main_window_tex_format->BitsPerPixel; // TODOSDL2
+	ScalerFunction new_scaler_function = scalers[new_scaler].scaler32;
 
-	scaler = new_scaler;
-
-	deinit_texture();
-	init_texture();
+	if (new_scaler_function == NULL)
+		return false;
+	if (!init_texture(new_scaler))
+		return false;
 
 	if (fullscreen_display == -1)
 	{
@@ -280,25 +319,8 @@ bool init_scaler(unsigned int new_scaler)
 		window_center_in_display(window_get_display_index());
 #endif
 	}
-
-	switch (bpp)
-	{
-	case 32:
-		scaler_function = scalers[scaler].scaler32;
-		break;
-	case 16:
-		scaler_function = scalers[scaler].scaler16;
-		break;
-	default:
-		scaler_function = NULL;
-		break;
-	}
-
-	if (scaler_function == NULL)
-	{
-		assert(false);
-		return false;
-	}
+	scaler = new_scaler;
+	scaler_function = new_scaler_function;
 
 	return true;
 }
@@ -356,6 +378,11 @@ bool video_save_surface_rgb(SDL_Surface *surface, const char *path)
 	const int result = SDL_SaveBMP(rgb, path);
 	SDL_FreeSurface(rgb);
 	return result == 0;
+}
+
+SDL_Renderer *video_get_renderer(void)
+{
+	return main_window_renderer;
 }
 
 void JE_showVGA(void)

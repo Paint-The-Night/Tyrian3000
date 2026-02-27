@@ -212,7 +212,7 @@ bool load_opentyrian_config(void)
 {
 	// defaults
 	fullscreen_display = -1;
-	set_scaler_by_name("Scale2x");
+	set_scaler_by_name("4x");
 	memcpy(keySettings, defaultKeySettings, sizeof(keySettings));
 	memcpy(mouseSettings, defaultMouseSettings, sizeof(mouseSettings));
 	
@@ -236,9 +236,15 @@ bool load_opentyrian_config(void)
 	{
 		config_get_int_option(section, "fullscreen", &fullscreen_display);
 		
-		const char *scaler;
-		if (config_get_string_option(section, "scaler", &scaler))
-			set_scaler_by_name(scaler);
+		const char *scaler_name;
+		if (config_get_string_option(section, "scaler", &scaler_name))
+		{
+			if (!set_scaler_by_name(scaler_name))
+			{
+				fprintf(stderr, "warning: unknown scaler '%s' in config; keeping '%s'\n",
+				        scaler_name, scalers[scaler].name);
+			}
+		}
 		
 		const char *scaling_mode;
 		if (config_get_string_option(section, "scaling_mode", &scaling_mode))

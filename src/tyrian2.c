@@ -28,6 +28,7 @@
 #include "game_menu.h"
 #include "joystick.h"
 #include "keyboard.h"
+#include "jukebox.h"
 #include "lds_play.h"
 #include "loudness.h"
 #include "lvllib.h"
@@ -55,6 +56,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include "SDL_image.h"
 
 inline static void blit_enemy(SDL_Surface *surface, unsigned int i, signed int x_offset, signed int y_offset, signed int sprite_offset);
 
@@ -3295,41 +3297,208 @@ void networkStartScreen(void)
 }
 #endif /* WITH_NETWORK */
 
+static Uint8 title_screen_find_closest_palette_index(Uint8 r, Uint8 g, Uint8 b)
+{
+	Uint8 best_index = 0;
+	unsigned int best_dist = ~0u;
+
+	for (int i = 0; i < 256; ++i)
+	{
+		const int dr = (int)colors[i].r - r;
+		const int dg = (int)colors[i].g - g;
+		const int db = (int)colors[i].b - b;
+		const unsigned int dist = (unsigned int)(dr * dr + dg * dg + db * db);
+
+		if (dist < best_dist)
+		{
+			best_dist = dist;
+			best_index = (Uint8)i;
+			if (dist == 0)
+				break;
+		}
+	}
+
+	return best_index;
+}
+
+static void title_screen_prepare_subtitle_indexed(SDL_Surface *subtitle_rgba, Uint8 *subtitle_pixels, Uint8 *subtitle_mask)
+{
+	if (subtitle_rgba == NULL || subtitle_pixels == NULL || subtitle_mask == NULL)
+		return;
+
+	if (SDL_MUSTLOCK(subtitle_rgba))
+		SDL_LockSurface(subtitle_rgba);
+
+	for (int y = 0; y < subtitle_rgba->h; ++y)
+	{
+		const Uint8 *const src = (const Uint8 *)subtitle_rgba->pixels + y * subtitle_rgba->pitch;
+		for (int x = 0; x < subtitle_rgba->w; ++x)
+		{
+			const Uint8 *const p = src + x * 4;
+			const Uint8 a = p[3];
+			const int i = y * subtitle_rgba->w + x;
+
+			if (a < 32)
+			{
+				subtitle_mask[i] = 0;
+				subtitle_pixels[i] = 0;
+			}
+			else
+			{
+				subtitle_mask[i] = 1;
+				subtitle_pixels[i] = title_screen_find_closest_palette_index(p[0], p[1], p[2]);
+			}
+		}
+	}
+
+	if (SDL_MUSTLOCK(subtitle_rgba))
+		SDL_UnlockSurface(subtitle_rgba);
+}
+
+static void title_screen_blit_subtitle(SDL_Surface *dst, int x, int y, int w, int h, const Uint8 *subtitle_pixels, const Uint8 *subtitle_mask)
+{
+	if (dst == NULL || subtitle_pixels == NULL || subtitle_mask == NULL || w <= 0 || h <= 0)
+		return;
+
+	assert(dst->format->BitsPerPixel == 8);
+
+	for (int sy = 0; sy < h; ++sy)
+	{
+		const int dy = y + sy;
+		if (dy < 0 || dy >= dst->h)
+			continue;
+
+		Uint8 *const dst_row = (Uint8 *)dst->pixels + dy * dst->pitch;
+		const int src_row = sy * w;
+
+		for (int sx = 0; sx < w; ++sx)
+		{
+			const int dx = x + sx;
+			if (dx < 0 || dx >= dst->w)
+				continue;
+
+			const int i = src_row + sx;
+			if (!subtitle_mask[i])
+				continue;
+
+			dst_row[dx] = subtitle_pixels[i];
+		}
+	}
+}
+
 bool titleScreen(void)
 {
 	remote_control_set_ui_context("title_screen");
 
-	enum MenuItemIndex
+	enum MainMenuItemIndex
 	{
-		MENU_ITEM_NEW_GAME = 0,
-		MENU_ITEM_LOAD_GAME,
-		MENU_ITEM_HIGH_SCORES,
-		MENU_ITEM_INSTRUCTIONS,
-		MENU_ITEM_SETUP,
-		MENU_ITEM_DEMO,
-		MENU_ITEM_QUIT,
+		MAIN_MENU_ITEM_NEW_GAME = 0,
+		MAIN_MENU_ITEM_LOAD_GAME,
+		MAIN_MENU_ITEM_SETUP,
+		MAIN_MENU_ITEM_EXTRAS,
+		MAIN_MENU_ITEM_QUIT,
+	};
+
+	enum ExtrasMenuItemIndex
+	{
+		EXTRAS_MENU_ITEM_HIGH_SCORES = 0,
+		EXTRAS_MENU_ITEM_INSTRUCTIONS,
+		EXTRAS_MENU_ITEM_DEMO,
+		EXTRAS_MENU_ITEM_JUKEBOX,
+		EXTRAS_MENU_ITEM_EXIT,
 	};
 
 	if (shopSpriteSheet.data == NULL)
 		JE_loadCompShapes(&shopSpriteSheet, '1');  // need mouse pointer sprites
 
 	bool restart = true;
+	bool redraw_menu = true;
+	bool fade_in_menu = true;
+	bool in_extras_menu = false;
+	bool title_screen_result = false;
 
-	size_t selectedIndex = MENU_ITEM_NEW_GAME;
+	size_t selected_main_index = MAIN_MENU_ITEM_NEW_GAME;
+	size_t selected_extras_index = EXTRAS_MENU_ITEM_HIGH_SCORES;
 	size_t specialNameProgress[SA_ENGAGE] = { 0 };
 
 	const int xCenter = VGAScreen->w / 2;
 	const int yMenuItems = 104;
 	const int hMenuItem = 13;
-	int wMenuItem[COUNTOF(menuText)] = { 0 };
+	const int subtitle_y = 74;
+	const int subtitle_right_x = 306;
+	const char *const main_menu_text[] = {
+		"New Game",
+		menuText[1],
+		menuText[4],
+		"Extras",
+		menuText[6],
+	};
+	const char *const extras_menu_text[] = {
+		menuText[2],
+		menuText[3],
+		menuText[5],
+		"Jukebox",
+		"Exit Extras",
+	};
+	int w_main_menu_item[COUNTOF(main_menu_text)] = { 0 };
+	int w_extras_menu_item[COUNTOF(extras_menu_text)] = { 0 };
 
-	for (; ; )
+	SDL_Surface *subtitle_rgba = NULL;
+	Uint8 *subtitle_pixels = NULL;
+	Uint8 *subtitle_mask = NULL;
+	int subtitle_w = 0;
+	int subtitle_h = 0;
+	int subtitle_x_final = 0;
+	char subtitle_path[1024];
+	snprintf(subtitle_path, sizeof(subtitle_path), "%s/logo-gravitium-war.png", data_dir());
+	SDL_Surface *subtitle_surface = IMG_Load(subtitle_path);
+	if (subtitle_surface == NULL)
 	{
-		if (restart)
+		snprintf(subtitle_path, sizeof(subtitle_path), "%s/logo-title.png", data_dir());
+		subtitle_surface = IMG_Load(subtitle_path);
+	}
+	if (subtitle_surface != NULL)
+	{
+		subtitle_rgba = SDL_ConvertSurfaceFormat(subtitle_surface, SDL_PIXELFORMAT_RGBA32, 0);
+		SDL_FreeSurface(subtitle_surface);
+		subtitle_surface = NULL;
+	}
+	if (subtitle_rgba != NULL)
+	{
+		const size_t pixel_count = (size_t)subtitle_rgba->w * subtitle_rgba->h;
+		subtitle_pixels = malloc(pixel_count);
+		subtitle_mask = malloc(pixel_count);
+		if (subtitle_pixels == NULL || subtitle_mask == NULL)
 		{
-			play_song(SONG_TITLE);
+			free(subtitle_pixels);
+			free(subtitle_mask);
+			subtitle_pixels = NULL;
+			subtitle_mask = NULL;
+		}
+
+		subtitle_w = subtitle_rgba->w;
+		subtitle_h = subtitle_rgba->h;
+	}
+	if (subtitle_pixels != NULL && subtitle_mask != NULL)
+	{
+		subtitle_x_final = subtitle_right_x - subtitle_w;
+		if (subtitle_x_final < 0)
+			subtitle_x_final = 0;
+	}
+
+		for (; ; )
+		{
+			const char *const *active_menu_text = in_extras_menu ? extras_menu_text : main_menu_text;
+			const size_t active_menu_count = in_extras_menu ? COUNTOF(extras_menu_text) : COUNTOF(main_menu_text);
+			int *active_menu_widths = in_extras_menu ? w_extras_menu_item : w_main_menu_item;
+			size_t *active_selected_index = in_extras_menu ? &selected_extras_index : &selected_main_index;
+
+			if (restart)
+			{
+				play_song(SONG_TITLE);
 
 			JE_loadPic(VGAScreen, 4, false);
+			title_screen_prepare_subtitle_indexed(subtitle_rgba, subtitle_pixels, subtitle_mask);
 
 			draw_font_hv_shadow(VGAScreen, 2, 192, opentyrian_version, small_font, left_aligned, 15, 0, false, 1);
 
@@ -3346,52 +3515,75 @@ bool titleScreen(void)
 
 					memcpy(VGAScreen->pixels, VGAScreen2->pixels, VGAScreen->pitch * VGAScreen->h);
 					blit_sprite(VGAScreenSeg, 11, yLogo, PLANET_SHAPES, 146); // tyrian logo
+
+					if (subtitle_pixels != NULL && subtitle_mask != NULL)
+					{
+						const int step = (60 - yLogo) / 2;
+						const int subtitle_x = VGAScreen->w - (int)((VGAScreen->w - subtitle_x_final) * step / 28);
+						title_screen_blit_subtitle(VGAScreen, subtitle_x, subtitle_y, subtitle_w, subtitle_h, subtitle_pixels, subtitle_mask);
+					}
+
 					JE_showVGA();
 
 					service_wait_delay();
 				}
 				moveTyrianLogoUp = false;
 			}
-			else
-			{
-				blit_sprite(VGAScreenSeg, 11, 4, PLANET_SHAPES, 146); // tyrian logo
-				fade_palette(colors, 10, 0, 255 - 16);
+				else
+				{
+					blit_sprite(VGAScreenSeg, 11, 4, PLANET_SHAPES, 146); // tyrian logo
+					fade_palette(colors, 10, 0, 255 - 16);
+				}
+
+				memcpy(game_screen->pixels, VGAScreen->pixels, game_screen->pitch * game_screen->h);
+				restart = false;
+				redraw_menu = true;
+				fade_in_menu = true;
 			}
 
-			// Draw menu items.
-			for (size_t i = 0; i < COUNTOF(menuText); ++i)
+			if (redraw_menu)
 			{
-				const char *const text = menuText[i];
+				memcpy(VGAScreen->pixels, game_screen->pixels, VGAScreen->pitch * VGAScreen->h);
 
-				wMenuItem[i] = JE_textWidth(text, normal_font);
-				const int x = xCenter - wMenuItem[i] / 2;
-				const int y = yMenuItems + hMenuItem * i;
+				// Draw menu items.
+				for (size_t i = 0; i < active_menu_count; ++i)
+				{
+					const char *const text = active_menu_text[i];
 
-				draw_font_hv(VGAScreen, x - 1, y - 1, menuText[i], normal_font, left_aligned, 15, -10);
-				draw_font_hv(VGAScreen, x + 1, y + 1, menuText[i], normal_font, left_aligned, 15, -10);
-				draw_font_hv(VGAScreen, x + 1, y - 1, menuText[i], normal_font, left_aligned, 15, -10);
-				draw_font_hv(VGAScreen, x - 1, y + 1, menuText[i], normal_font, left_aligned, 15, -10);
-				draw_font_hv(VGAScreen, x,     y,     menuText[i], normal_font, left_aligned, 15, -3);
+					active_menu_widths[i] = JE_textWidth(text, normal_font);
+					const int x = xCenter - active_menu_widths[i] / 2;
+					const int y = yMenuItems + hMenuItem * i;
+
+					draw_font_hv(VGAScreen, x - 1, y - 1, text, normal_font, left_aligned, 15, -10);
+					draw_font_hv(VGAScreen, x + 1, y + 1, text, normal_font, left_aligned, 15, -10);
+					draw_font_hv(VGAScreen, x + 1, y - 1, text, normal_font, left_aligned, 15, -10);
+					draw_font_hv(VGAScreen, x - 1, y + 1, text, normal_font, left_aligned, 15, -10);
+					draw_font_hv(VGAScreen, x,     y,     text, normal_font, left_aligned, 15, -3);
+				}
+
+				memcpy(VGAScreen2->pixels, VGAScreen->pixels, VGAScreen2->pitch * VGAScreen2->h);
+
+				mouseCursor = MOUSE_POINTER_NORMAL;
+
+				if (fade_in_menu)
+				{
+					// Fade in menu items.
+					fade_palette(colors, 20, 255 - 16 + 1, 255);
+					fade_in_menu = false;
+				}
+
+				redraw_menu = false;
 			}
 
-			memcpy(VGAScreen2->pixels, VGAScreen->pixels, VGAScreen2->pitch * VGAScreen2->h);
+			memcpy(VGAScreen->pixels, VGAScreen2->pixels, VGAScreen->pitch * VGAScreen->h);
 
-			mouseCursor = MOUSE_POINTER_NORMAL;
-
-			// Fade in menu items.
-			fade_palette(colors, 20, 255 - 16 + 1, 255);
-
-			restart = false;
-		}
-
-		memcpy(VGAScreen->pixels, VGAScreen2->pixels, VGAScreen->pitch * VGAScreen->h);
-
-		// Highlight selected menu item.
-		draw_font_hv(VGAScreen, VGAScreen->w / 2, yMenuItems + hMenuItem * selectedIndex, menuText[selectedIndex], normal_font, centered, 15, -1);
+			// Highlight selected menu item.
+			draw_font_hv(VGAScreen, VGAScreen->w / 2, yMenuItems + hMenuItem * *active_selected_index, active_menu_text[*active_selected_index], normal_font, centered, 15, -1);
 
 		service_SDL_events(true);
 
 		JE_mouseStartFilter(0xF0);
+		title_screen_blit_subtitle(VGAScreen, subtitle_x_final, subtitle_y, subtitle_w, subtitle_h, subtitle_pixels, subtitle_mask);
 		JE_showVGA();
 		JE_mouseReplace();
 
@@ -3406,7 +3598,8 @@ bool titleScreen(void)
 				fade_black(15);
 
 				play_demo = true;
-				return true;
+				title_screen_result = true;
+				goto cleanup;
 			}
 
 			SDL_Delay(16);
@@ -3431,29 +3624,29 @@ bool titleScreen(void)
 		bool action = false;
 		bool done = false;
 
-		if (mouseMoved || newmouse)
-		{
-			// Find menu item that was hovered or clicked.
-			for (size_t i = 0; i < COUNTOF(menuText); ++i)
+			if (mouseMoved || newmouse)
 			{
-				const int xMenuItem = xCenter - wMenuItem[i] / 2;
-				if (mouse_x >= xMenuItem && mouse_x < xMenuItem + wMenuItem[i])
+				// Find menu item that was hovered or clicked.
+				for (size_t i = 0; i < active_menu_count; ++i)
 				{
-					const int yMenuItem = yMenuItems + hMenuItem * i;
-					if (mouse_y >= yMenuItem && mouse_y < yMenuItem + hMenuItem)
+					const int xMenuItem = xCenter - active_menu_widths[i] / 2;
+					if (mouse_x >= xMenuItem && mouse_x < xMenuItem + active_menu_widths[i])
 					{
-						if (selectedIndex != i)
+						const int yMenuItem = yMenuItems + hMenuItem * i;
+						if (mouse_y >= yMenuItem && mouse_y < yMenuItem + hMenuItem)
 						{
-							JE_playSampleNum(S_CURSOR);
+							if (*active_selected_index != i)
+							{
+								JE_playSampleNum(S_CURSOR);
 
-							selectedIndex = i;
-						}
+								*active_selected_index = i;
+							}
 
-						if (newmouse && lastmouse_but == SDL_BUTTON_LEFT &&
-						    lastmouse_x >= xMenuItem && lastmouse_x < xMenuItem + wMenuItem[i] &&
-						    lastmouse_y >= yMenuItem && lastmouse_y < yMenuItem + hMenuItem)
-						{
-							action = true;
+							if (newmouse && lastmouse_but == SDL_BUTTON_LEFT &&
+							    lastmouse_x >= xMenuItem && lastmouse_x < xMenuItem + active_menu_widths[i] &&
+							    lastmouse_y >= yMenuItem && lastmouse_y < yMenuItem + hMenuItem)
+							{
+								action = true;
 						}
 
 						break;
@@ -3462,49 +3655,63 @@ bool titleScreen(void)
 			}
 		}
 
-		if (newmouse)
-		{
-			if (lastmouse_but == SDL_BUTTON_RIGHT)
+			if (newmouse)
 			{
-				JE_playSampleNum(S_SPRING);
-
-				done = true;
+				if (lastmouse_but == SDL_BUTTON_RIGHT)
+				{
+					JE_playSampleNum(S_SPRING);
+					if (in_extras_menu)
+					{
+						in_extras_menu = false;
+						redraw_menu = true;
+					}
+					else
+					{
+						done = true;
+					}
+				}
 			}
-		}
-		else if (newkey)
+			else if (newkey)
 		{
 			switch (lastkey_scan)
 			{
-			case SDL_SCANCODE_UP:
-			{
-				JE_playSampleNum(S_CURSOR);
+				case SDL_SCANCODE_UP:
+				{
+					JE_playSampleNum(S_CURSOR);
 
-				selectedIndex = selectedIndex == 0
-					? COUNTOF(menuText) - 1
-					: selectedIndex - 1;
-				break;
-			}
-			case SDL_SCANCODE_DOWN:
-			{
-				JE_playSampleNum(S_CURSOR);
+					*active_selected_index = *active_selected_index == 0
+						? active_menu_count - 1
+						: *active_selected_index - 1;
+					break;
+				}
+				case SDL_SCANCODE_DOWN:
+				{
+					JE_playSampleNum(S_CURSOR);
 
-				selectedIndex = selectedIndex == COUNTOF(menuText) - 1
-					? 0
-					: selectedIndex + 1;
-				break;
-			}
+					*active_selected_index = *active_selected_index == active_menu_count - 1
+						? 0
+						: *active_selected_index + 1;
+					break;
+				}
 			case SDL_SCANCODE_SPACE:
 			case SDL_SCANCODE_RETURN:
 			{
 				action = true;
 				break;
 			}
-			case SDL_SCANCODE_ESCAPE:
-			{
-				JE_playSampleNum(S_SPRING);
-
-				done = true;
-			}
+				case SDL_SCANCODE_ESCAPE:
+				{
+					JE_playSampleNum(S_SPRING);
+					if (in_extras_menu)
+					{
+						in_extras_menu = false;
+						redraw_menu = true;
+					}
+					else
+					{
+						done = true;
+					}
+				}
 			default:
 				break;
 			}
@@ -3534,7 +3741,8 @@ bool titleScreen(void)
 							fade_black(10);
 
 							loadDestruct = true;
-							return true;
+							title_screen_result = true;
+							goto cleanup;
 						}
 						else if (i + 1 == SA_ENGAGE)
 						{
@@ -3544,7 +3752,10 @@ bool titleScreen(void)
 							set_colors((SDL_Color) { 0, 0, 0 }, 0, 255);
 
 							if (newSuperTyrianGame())
-								return true;
+							{
+								title_screen_result = true;
+								goto cleanup;
+							}
 
 							restart = true;
 						}
@@ -3553,7 +3764,10 @@ bool titleScreen(void)
 							fade_black(10);
 
 							if (newSuperArcadeGame(i))
-								return true;
+							{
+								title_screen_result = true;
+								goto cleanup;
+							}
 
 							restart = true;
 						}
@@ -3562,84 +3776,132 @@ bool titleScreen(void)
 			}
 		}
 
-		if (action)
-		{
-			JE_playSampleNum(S_SELECT);
-
-			switch (selectedIndex)
+			if (action)
 			{
-			case MENU_ITEM_NEW_GAME:
-			{
-				fade_black(15);
+				JE_playSampleNum(S_SELECT);
+				if (in_extras_menu)
+				{
+					switch (selected_extras_index)
+					{
+					case EXTRAS_MENU_ITEM_HIGH_SCORES:
+					{
+						fade_black(15);
 
-				if (newGame())
-					return true;
+						JE_highScoreScreen();
 
-				restart = true;
-				break;
+						restart = true;
+						break;
+					}
+					case EXTRAS_MENU_ITEM_INSTRUCTIONS:
+					{
+						fade_black(15);
+
+						JE_helpSystem(1);
+
+						restart = true;
+						break;
+					}
+					case EXTRAS_MENU_ITEM_DEMO:
+					{
+						fade_black(15);
+
+						play_demo = true;
+						title_screen_result = true;
+						goto cleanup;
+					}
+					case EXTRAS_MENU_ITEM_JUKEBOX:
+					{
+						fade_black(15);
+
+						jukebox();
+
+						restart = true;
+						break;
+					}
+					case EXTRAS_MENU_ITEM_EXIT:
+					{
+						in_extras_menu = false;
+						redraw_menu = true;
+						break;
+					}
+					default:
+						break;
+					}
+				}
+				else
+				{
+					switch (selected_main_index)
+					{
+					case MAIN_MENU_ITEM_NEW_GAME:
+					{
+						fade_black(15);
+
+						if (newGame())
+						{
+							title_screen_result = true;
+							goto cleanup;
+						}
+
+						restart = true;
+						break;
+					}
+					case MAIN_MENU_ITEM_LOAD_GAME:
+					{
+						fade_black(15);
+
+						if (JE_loadScreen())
+						{
+							title_screen_result = true;
+							goto cleanup;
+						}
+
+						restart = true;
+						break;
+					}
+					case MAIN_MENU_ITEM_SETUP:
+					{
+						fade_black(15);
+
+						setupMenu();
+
+						restart = true;
+						break;
+					}
+					case MAIN_MENU_ITEM_EXTRAS:
+					{
+						in_extras_menu = true;
+						redraw_menu = true;
+						break;
+					}
+					case MAIN_MENU_ITEM_QUIT:
+					{
+						fade_black(15);
+
+						title_screen_result = false;
+						goto cleanup;
+					}
+					default:
+						break;
+					}
+				}
 			}
-			case MENU_ITEM_LOAD_GAME:
-			{
-				fade_black(15);
-
-				if (JE_loadScreen())
-					return true;
-
-				restart = true;
-				break;
-			}
-			case MENU_ITEM_HIGH_SCORES:
-			{
-				fade_black(15);
-
-				JE_highScoreScreen();
-
-				restart = true;
-				break;
-			}
-			case MENU_ITEM_INSTRUCTIONS:
-			{
-				fade_black(15);
-
-				JE_helpSystem(1);
-
-				restart = true;
-				break;
-			}
-			case MENU_ITEM_SETUP:
-			{
-				fade_black(15);
-
-				setupMenu();
-
-				restart = true;
-				break;
-			}
-			case MENU_ITEM_DEMO:
-			{
-				fade_black(15);
-
-				play_demo = true;
-				return true;
-			}
-			case MENU_ITEM_QUIT:
-			{
-				fade_black(15);
-
-				return false;
-			}
-			default:
-				break;
-			}
-		}
 
 		if (done)
 		{
 			fade_black(15);
 
-			return false;
+			title_screen_result = false;
+			goto cleanup;
 		}
 	}
+
+cleanup:
+	if (subtitle_rgba != NULL)
+		SDL_FreeSurface(subtitle_rgba);
+	free(subtitle_pixels);
+	free(subtitle_mask);
+
+	return title_screen_result;
 }
 
 bool newGame(void)

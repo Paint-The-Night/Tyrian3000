@@ -59,16 +59,18 @@ const struct Scalers scalers[] =
 };
 const uint scalers_count = COUNTOF(scalers);
 
-void set_scaler_by_name(const char *name)
+bool set_scaler_by_name(const char *name)
 {
 	for (uint i = 0; i < scalers_count; ++i)
 	{
 		if (strcmp(name, scalers[i].name) == 0)
 		{
 			scaler = i;
-			break;
+			return true;
 		}
 	}
+
+	return false;
 }
 
 void nn_32(SDL_Surface *src_surface, SDL_Texture *dst_texture)
