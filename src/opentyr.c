@@ -1062,7 +1062,7 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef NDEBUG
-	if (!isNetworkGame && !startInSetupMenu)
+	if (!isNetworkGame && !startInSetupMenu && !startInJukebox)
 		intro_logos();
 #endif
 
@@ -1082,6 +1082,17 @@ int main(int argc, char *argv[])
 			setupMenu();
 			startInSetupMenu = false;
 			startInGraphicsMenu = false;
+			startInJukebox = false;
+			startMenuEnter = false;
+			startMenuOption[0] = '\0';
+		}
+
+		if (startInJukebox)
+		{
+			jukebox();
+			startInSetupMenu = false;
+			startInGraphicsMenu = false;
+			startInJukebox = false;
 			startMenuEnter = false;
 			startMenuOption[0] = '\0';
 		}

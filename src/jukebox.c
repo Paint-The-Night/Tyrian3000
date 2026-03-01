@@ -29,10 +29,21 @@
 #include "palette.h"
 #include "sprite.h"
 #include "starlib.h"
+#include "vga256d.h"
 #include "vga_palette.h"
 #include "video.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+
+static int wrap_song_index(int i)
+{
+	while (i < 0)
+		i += MUSIC_NUM;
+	while (i >= MUSIC_NUM)
+		i -= MUSIC_NUM;
+	return i;
+}
 
 void jukebox(void)  // FKA Setup.jukeboxGo
 {
@@ -93,21 +104,73 @@ void jukebox(void)  // FKA Setup.jukeboxGo
 		push_joysticks_as_keyboard();
 		service_SDL_events(true);
 
-		if (!hide_text)
-		{
-			char buffer[60];
-			
-			if (fx)
-				snprintf(buffer, sizeof(buffer), "%d %s", fx_num + 1, soundTitle[fx_num]);
-			else
-				snprintf(buffer, sizeof(buffer), "%d %s", song_playing + 1, musicTitle[song_playing]);
-			
-			const int x = VGAScreen->w / 2;
-			
-			draw_font_hv(VGAScreen, x, 170, "Press ESC to quit the jukebox.",           small_font, centered, 1, 0);
-			draw_font_hv(VGAScreen, x, 180, "Arrow keys change the song being played.", small_font, centered, 1, 0);
-			draw_font_hv(VGAScreen, x, 190, buffer,                                     small_font, centered, 1, 4);
-		}
+			if (!hide_text)
+			{
+				const int list_x = 12;
+				const int list_center_y = 96;
+				const int list_line_h = 9;
+				const int list_area_x1 = 8;
+				const int list_area_x2 = 198;
+				const int list_area_y1 = 14;
+				const int list_area_y2 = 178;
+				const int max_visible_rows = 17; // odd count so selected row can sit in the center
+				const int visible_rows = MUSIC_NUM < max_visible_rows ? MUSIC_NUM : max_visible_rows;
+				const int half_rows = visible_rows / 2;
+				const int selected = song_playing;
+
+				// Darken song-list region while preserving animated stars.
+				JE_barShade(VGAScreen, list_area_x1, list_area_y1, list_area_x2, list_area_y2);
+				JE_barShade(VGAScreen, list_area_x1, list_area_y1, list_area_x2, list_area_y2);
+
+				for (int row = -half_rows; row <= half_rows; ++row)
+				{
+					const int song_index = wrap_song_index(selected + row);
+					const int y = list_center_y + row * list_line_h;
+					const int row_y1 = y - 1;
+					const int row_y2 = y + 7;
+					char entry[80];
+					snprintf(entry, sizeof(entry), "%2d %s", song_index + 1, musicTitle[song_index]);
+
+					const int distance = abs(row);
+					const bool current = row == 0;
+					const Uint8 hue = current ? 15 : 1;
+					Sint8 value;
+					if (current)
+					{
+						value = 4;
+					}
+					else
+					{
+						int faded_value = -1 - distance;
+						if (faded_value < -6)
+							faded_value = -6;
+						value = (Sint8)faded_value;
+					}
+
+					if (current)
+					{
+						JE_barShade(VGAScreen, list_area_x1, row_y1, list_area_x2, row_y2);
+						draw_font_hv(VGAScreen, list_x, y, entry, small_font, left_aligned, 1, 4);
+					}
+					else
+					{
+						draw_font_hv(VGAScreen, list_x, y, entry, small_font, left_aligned, hue, value);
+					}
+				}
+
+				draw_font_hv(VGAScreen, 2, list_center_y, ">", small_font, left_aligned, 15, 4);
+				draw_font_hv(VGAScreen, 198, 156, "SPACE: Hide Text", small_font, left_aligned, 1, 0);
+				draw_font_hv(VGAScreen, 198, 166, "ESC: Quit", small_font, left_aligned, 1, 0);
+				draw_font_hv(VGAScreen, 198, 176, "Up/Down: Select", small_font, left_aligned, 1, 0);
+				draw_font_hv(VGAScreen, 198, 186, "S: Stop  R: Restart", small_font, left_aligned, 1, 0);
+
+				if (fx)
+				{
+					char fx_buffer[60];
+					snprintf(fx_buffer, sizeof(fx_buffer), "FX %d %s", fx_num + 1, soundTitle[fx_num]);
+					draw_font_hv(VGAScreen, 198, 12, fx_buffer, small_font, left_aligned, 13, 2);
+				}
+			}
 
 		if (palette_fade_steps > 0)
 			step_fade_palette(diff, palette_fade_steps--, 0, 255);

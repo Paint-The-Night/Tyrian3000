@@ -37,6 +37,7 @@
 
 JE_boolean richMode = false, constantPlay = false, constantDie = false;
 JE_boolean startInSetupMenu = false, startInGraphicsMenu = false;
+JE_boolean startInJukebox = false;
 JE_boolean startMenuEnter = false;
 char startMenuOption[64] = "";
 
@@ -76,6 +77,7 @@ void JE_paramCheck(int argc, char *argv[])
 			{ 262, 0,   "start-graphics-menu", false },
 			{ 263, 0,   "start-menu-option", true },
 			{ 264, 0,   "start-menu-enter", false },
+			{ 265, 0,   "start-jukebox", false },
 
 		{ 0, 0, NULL, false}
 	};
@@ -117,6 +119,7 @@ void JE_paramCheck(int argc, char *argv[])
 				       "  --remote-socket=PATH         Override remote control socket path\n"
 				       "  --start-setup-menu           Start directly in Setup menu\n"
 				       "  --start-graphics-menu        Start directly in Setup > Graphics\n"
+				       "  --start-jukebox              Start directly in Jukebox\n"
 				       "  --start-menu-option=NAME     Preselect menu item (e.g. scaler)\n"
 				       "  --start-menu-enter           Activate selected startup menu item\n", argv[0]);
 			exit(0);
@@ -250,11 +253,13 @@ void JE_paramCheck(int argc, char *argv[])
 			case 261: // --start-setup-menu
 				startInSetupMenu = true;
 				startInGraphicsMenu = false;
+				startInJukebox = false;
 				break;
 
 			case 262: // --start-graphics-menu
 				startInSetupMenu = true;
 				startInGraphicsMenu = true;
+				startInJukebox = false;
 				break;
 
 			case 263: // --start-menu-option
@@ -263,6 +268,12 @@ void JE_paramCheck(int argc, char *argv[])
 
 			case 264: // --start-menu-enter
 				startMenuEnter = true;
+				break;
+
+			case 265: // --start-jukebox
+				startInSetupMenu = false;
+				startInGraphicsMenu = false;
+				startInJukebox = true;
 				break;
 
 		default:

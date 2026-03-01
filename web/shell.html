@@ -122,9 +122,16 @@
       return `${m[1].trim()} ${m[2]}/${m[4]}`;
     }
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const moduleArguments = [];
+    for (const arg of urlParams.getAll("arg")) {
+      if (arg) moduleArguments.push(arg);
+    }
+
     var Module = {
       preRun: [],
       postRun: [],
+      arguments: moduleArguments,
       canvas: canvasElement,
       print: (...args) => console.log(args.join(" ")),
       printErr: (...args) => console.log("[stderr] " + args.join(" ")),
